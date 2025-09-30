@@ -61,9 +61,9 @@ public class MediaSortingController {
         status.put("applicationName", "Media Sorting Application");
         status.put("version", "1.0.0");
         status.put("defaultSourceFolder", properties.getSourceFolder());
-        status.put("logsFolder", properties.getLogsFolder());
-        status.put("createDeviceFolders", properties.isCreateDeviceFolders());
-        status.put("moveDuplicates", properties.isMoveDuplicates());
+        status.put("logsFolder", properties.getRootLogsFolder());
+        status.put("createDeviceFolders", properties.isEnableDeviceFolderCreation());
+        status.put("moveDuplicates", properties.isEnableDuplicateMoving());
         
         return ResponseEntity.ok(status);
     }
@@ -106,10 +106,10 @@ public class MediaSortingController {
             if (folder1Path != null || folder2Path != null) {
                 originalBatchJob = properties.getBatchJob();
                 MediaSortingProperties.BatchJobProperties tempBatchJob = new MediaSortingProperties.BatchJobProperties();
-                tempBatchJob.setFolder1Path(folder1Path != null ? folder1Path : originalBatchJob.getFolder1Path());
-                tempBatchJob.setFolder2Path(folder2Path != null ? folder2Path : originalBatchJob.getFolder2Path());
-                tempBatchJob.setThreadPoolSize(originalBatchJob.getThreadPoolSize());
-                tempBatchJob.setCompareLogsPath(originalBatchJob.getCompareLogsPath());
+                tempBatchJob.setPrimaryFolderPath(folder1Path != null ? folder1Path : originalBatchJob.getPrimaryFolderPath());
+                tempBatchJob.setSecondaryFolderPath(folder2Path != null ? folder2Path : originalBatchJob.getSecondaryFolderPath());
+                tempBatchJob.setMaxThreadPoolSize(originalBatchJob.getMaxThreadPoolSize());
+                tempBatchJob.setComparisonLogsDirectoryPath(originalBatchJob.getComparisonLogsDirectoryPath());
                 properties.setBatchJob(tempBatchJob);
             }
 
@@ -121,8 +121,8 @@ public class MediaSortingController {
             response.put("folder1ProcessedFiles", result.getFolder1ProcessedFiles());
             response.put("folder2ProcessedFiles", result.getFolder2ProcessedFiles());
             response.put("movedFiles", result.getMovedFiles());
-            response.put("folder1Path", properties.getBatchJob().getFolder1Path());
-            response.put("folder2Path", properties.getBatchJob().getFolder2Path());
+            response.put("folder1Path", properties.getBatchJob().getPrimaryFolderPath());
+            response.put("folder2Path", properties.getBatchJob().getSecondaryFolderPath());
             
             // Restore original batch job properties if they were overridden
             if (originalBatchJob != null) {

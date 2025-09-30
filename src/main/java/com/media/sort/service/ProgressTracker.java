@@ -34,7 +34,7 @@ public class ProgressTracker {
         } else {
             // It's just a directory name
             this.directory = filePath;
-            this.baseFileName = "progress.txt";
+            this.baseFileName = "progress.txt"; // Default filename for directory-only paths
         }
         createDirectoryIfNotExists();
         this.currentFile = getLatestFile();

@@ -1,5 +1,7 @@
 package com.media.sort.service;
 
+import com.media.sort.MediaSortingProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -7,6 +9,9 @@ import java.util.concurrent.ConcurrentMap;
 
 @Service
 public class ProgressTrackerFactory {
+    
+    @Autowired
+    private MediaSortingProperties properties;
     
     private final ConcurrentMap<String, ProgressTracker> trackers = new ConcurrentHashMap<>();
     
@@ -20,33 +25,50 @@ public class ProgressTrackerFactory {
     }
     
     /**
-     * Gets a ProgressTracker for common log types
+     * Gets a ProgressTracker for common log types using configuration
      */
     public ProgressTracker getImageErrorTracker() {
-        return getOrCreateTracker("logs/po/image/error.txt");
+        return getOrCreateTracker(properties.getLogFilePaths().getImageErrorLogPath());
     }
     
     public ProgressTracker getVideoErrorTracker() {
-        return getOrCreateTracker("logs/po/video/error.txt");
+        return getOrCreateTracker(properties.getLogFilePaths().getVideoErrorLogPath());
     }
     
     public ProgressTracker getMediaErrorTracker() {
-        return getOrCreateTracker("logs/po/media/error.txt");
+        return getOrCreateTracker(properties.getLogFilePaths().getMediaErrorLogPath());
     }
     
     public ProgressTracker getPhotoOrganizerErrorTracker() {
-        return getOrCreateTracker("logs/po/error.txt");
+        return getOrCreateTracker(properties.getLogFilePaths().getPhotoOrganizerErrorLogPath());
     }
     
     public ProgressTracker getFileComparisonTracker() {
-        return getOrCreateTracker("logs/po/file/compare.txt");
+        return getOrCreateTracker(properties.getLogFilePaths().getFileComparisonLogPath());
     }
     
     public ProgressTracker getCleanupTracker() {
-        return getOrCreateTracker("logs/cleanup/empty-folders.txt");
+        return getOrCreateTracker(properties.getLogFilePaths().getEmptyFolderCleanupLogPath());
     }
     
     public ProgressTracker getFolderComparisonTracker() {
-        return getOrCreateTracker("logs/compare/progress.txt");
+        return getOrCreateTracker(properties.getLogFilePaths().getFolderComparisonProgressLogPath());
+    }
+    
+    // Additional video-specific trackers
+    public ProgressTracker getVideoMp4ErrorTracker() {
+        return getOrCreateTracker(properties.getLogFilePaths().getVideoMp4ErrorLogPath());
+    }
+    
+    public ProgressTracker getVideoTgpErrorTracker() {
+        return getOrCreateTracker(properties.getLogFilePaths().getVideoTgpErrorLogPath());
+    }
+    
+    public ProgressTracker getVideoQtErrorTracker() {
+        return getOrCreateTracker(properties.getLogFilePaths().getVideoQtErrorLogPath());
+    }
+    
+    public ProgressTracker getVideoOtherErrorTracker() {
+        return getOrCreateTracker(properties.getLogFilePaths().getVideoOtherErrorLogPath());
     }
 }

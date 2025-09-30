@@ -32,9 +32,9 @@ public class ExifData {
     
     private static final Logger logger = LoggerFactory.getLogger(ExifData.class);
     
-    private final ProgressTracker imageErrorTracker;
-    private final ProgressTracker compressionTracker;
-    private final ProgressTracker fileTracker;
+    private ProgressTracker imageErrorTracker;
+    private ProgressTracker compressionTracker;
+    private ProgressTracker fileTracker;
     
     @Autowired
     private VideoExifDataService videoExifDataService;
@@ -60,15 +60,27 @@ public class ExifData {
     private String folderDate;
     private String extension;
 
+    // Default constructor - trackers will be initialized via ProgressTrackerFactory
     public ExifData() {
-        this.imageErrorTracker = new ProgressTracker("logs/po/image/error.txt");
-        this.compressionTracker = new ProgressTracker("logs/po/file/compare.txt");
-        this.fileTracker = new ProgressTracker("logs/po/file/compare.txt");
+        // Trackers will be set via setProgressTrackers method when ProgressTrackerFactory is available
+        // This avoids hardcoded paths
     }
 
     public ExifData(File file) {
         this();
         processFile(file);
+    }
+    
+    /**
+     * Initialize progress trackers using ProgressTrackerFactory
+     * This method should be called by services that have access to ProgressTrackerFactory
+     */
+    public void setProgressTrackers(ProgressTracker imageErrorTracker, 
+                                  ProgressTracker compressionTracker, 
+                                  ProgressTracker fileTracker) {
+        this.imageErrorTracker = imageErrorTracker;
+        this.compressionTracker = compressionTracker;
+        this.fileTracker = fileTracker;
     }
 
 

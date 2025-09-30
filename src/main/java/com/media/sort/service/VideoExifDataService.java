@@ -14,6 +14,7 @@ import org.apache.tika.parser.mp4.MP4Parser;
 import org.apache.tika.sax.BodyContentHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.xml.sax.SAXException;
 
@@ -31,11 +32,11 @@ public class VideoExifDataService {
     
     private static final Logger logger = LoggerFactory.getLogger(VideoExifDataService.class);
     
-    private final ProgressTracker videoErrorTracker;
-    private final ProgressTracker mp4ErrorTracker;
-    private final ProgressTracker tgpErrorTracker;
-    private final ProgressTracker qtErrorTracker;
-    private final ProgressTracker otherErrorTracker;
+    private ProgressTracker videoErrorTracker;
+    private ProgressTracker mp4ErrorTracker;
+    private ProgressTracker tgpErrorTracker;
+    private ProgressTracker qtErrorTracker;
+    private ProgressTracker otherErrorTracker;
     
     private static final String[] POSSIBLE_CREATION_DATE_KEYS = {
         "xmpDM:creationDate", // XMPDM schema
@@ -44,12 +45,21 @@ public class VideoExifDataService {
         "dcterms:created"
     };
 
+    @Autowired
+    private ProgressTrackerFactory progressTrackerFactory;
+    
     public VideoExifDataService() {
-        this.videoErrorTracker = new ProgressTracker("logs/po/video/error.txt");
-        this.mp4ErrorTracker = new ProgressTracker("logs/po/video/mp4Error.txt");
-        this.tgpErrorTracker = new ProgressTracker("logs/po/video/tgpError.txt");
-        this.qtErrorTracker = new ProgressTracker("logs/po/video/qtError.txt");
-        this.otherErrorTracker = new ProgressTracker("logs/po/video/otherError.txt");
+        // Trackers will be initialized through initializeTrackers method
+    }
+    
+    private void initializeTrackers() {
+        if (progressTrackerFactory != null) {
+            this.videoErrorTracker = progressTrackerFactory.getVideoErrorTracker();
+            this.mp4ErrorTracker = progressTrackerFactory.getVideoMp4ErrorTracker();
+            this.tgpErrorTracker = progressTrackerFactory.getVideoTgpErrorTracker();
+            this.qtErrorTracker = progressTrackerFactory.getVideoQtErrorTracker();
+            this.otherErrorTracker = progressTrackerFactory.getVideoOtherErrorTracker();
+        }
     }
 
     public void processVideoFile(ExifData exifData) throws IOException {

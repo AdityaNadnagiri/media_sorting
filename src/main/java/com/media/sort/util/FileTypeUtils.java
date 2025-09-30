@@ -1,40 +1,47 @@
 package com.media.sort.util;
 
-import java.util.Arrays;
-import java.util.HashSet;
+import com.media.sort.MediaSortingProperties;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
 import java.util.Set;
 
 /**
  * Utility class for file type detection and management
+ * Now uses MediaSortingProperties for configurable file extensions
  */
-public final class FileTypeUtils {
+@Component
+public class FileTypeUtils {
     
-    public static final Set<String> IMAGE_EXTENSIONS = new HashSet<>(Arrays.asList(
-        "arw", "jpg", "jpeg", "gif", "bmp", "ico", "tif", "tiff", "raw", "indd", 
-        "ai", "eps", "pdf", "heic", "cr2", "nrw", "k25"
-    ));
+    private static MediaSortingProperties properties;
     
-    public static final Set<String> VIDEO_EXTENSIONS = new HashSet<>(Arrays.asList(
-        "mp4", "mkv", "flv", "avi", "mov", "wmv", "rm", "mpg", "mpeg", 
-        "3gp", "vob", "m4v", "3g2", "divx", "xvid"
-    ));
-    
-    private FileTypeUtils() {
-        // Utility class - prevent instantiation
+    @Autowired
+    public void setProperties(MediaSortingProperties properties) {
+        FileTypeUtils.properties = properties;
     }
     
     /**
      * Determines if a file extension represents an image file
      */
     public static boolean isImage(String extension) {
-        return IMAGE_EXTENSIONS.contains(extension.toLowerCase());
+        if (properties != null) {
+            return properties.getFileExtensions().getSupportedImageExtensions()
+                    .contains(extension.toLowerCase());
+        }
+        // Fallback to default set if properties not available
+        return getDefaultImageExtensions().contains(extension.toLowerCase());
     }
     
     /**
      * Determines if a file extension represents a video file
      */
     public static boolean isVideo(String extension) {
-        return VIDEO_EXTENSIONS.contains(extension.toLowerCase());
+        if (properties != null) {
+            return properties.getFileExtensions().getSupportedVideoExtensions()
+                    .contains(extension.toLowerCase());
+        }
+        // Fallback to default set if properties not available
+        return getDefaultVideoExtensions().contains(extension.toLowerCase());
     }
     
     /**
@@ -46,9 +53,9 @@ public final class FileTypeUtils {
         String ext = extension.startsWith(".") ? extension.substring(1) : extension;
         ext = ext.toLowerCase();
         
-        if (IMAGE_EXTENSIONS.contains(ext)) {
+        if (isImage(ext)) {
             return "image";
-        } else if (VIDEO_EXTENSIONS.contains(ext)) {
+        } else if (isVideo(ext)) {
             return "video";
         } else {
             return "other";
@@ -61,5 +68,22 @@ public final class FileTypeUtils {
     public static String getExtension(String filename) {
         int dotIndex = filename.lastIndexOf('.');
         return (dotIndex == -1) ? "" : filename.substring(dotIndex + 1);
+    }
+    
+    /**
+     * Default image extensions for fallback
+     */
+    private static Set<String> getDefaultImageExtensions() {
+        return Set.of("arw", "jpg", "jpeg", "gif", "bmp", "ico", "tif", "tiff", 
+                     "raw", "indd", "ai", "eps", "pdf", "heic", "cr2", "nrw", 
+                     "k25", "png", "webp");
+    }
+    
+    /**
+     * Default video extensions for fallback
+     */
+    private static Set<String> getDefaultVideoExtensions() {
+        return Set.of("mp4", "mkv", "flv", "avi", "mov", "wmv", "rm", "mpg", 
+                     "mpeg", "3gp", "vob", "m4v", "3g2", "divx", "xvid", "webm");
     }
 }

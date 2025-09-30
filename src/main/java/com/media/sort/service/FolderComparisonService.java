@@ -41,10 +41,10 @@ public class FolderComparisonService {
 
         try {
             logger.info("Starting folder comparison between {} and {}", 
-                properties.getBatchJob().getFolder1Path(), 
-                properties.getBatchJob().getFolder2Path());
+                properties.getBatchJob().getPrimaryFolderPath(), 
+                properties.getBatchJob().getSecondaryFolderPath());
 
-            executor = Executors.newFixedThreadPool(properties.getBatchJob().getThreadPoolSize());
+            executor = Executors.newFixedThreadPool(properties.getBatchJob().getMaxThreadPoolSize());
 
             // Create log directories
             createLogDirectories();
@@ -74,13 +74,13 @@ public class FolderComparisonService {
     }
 
     private void createLogDirectories() throws IOException {
-        String compareLogsPath = properties.getBatchJob().getCompareLogsPath();
+        String compareLogsPath = properties.getBatchJob().getComparisonLogsDirectoryPath();
         Files.createDirectories(Paths.get(compareLogsPath));
     }
 
     private int processFolder2Files() throws IOException {
         int processedCount = 0;
-        String folder2Path = properties.getBatchJob().getFolder2Path();
+        String folder2Path = properties.getBatchJob().getSecondaryFolderPath();
         
         logger.info("Building hash map from folder2: {}", folder2Path);
 
@@ -99,7 +99,7 @@ public class FolderComparisonService {
     }
 
     private ComparisonResult processFolder1Files(ComparisonResult result) throws IOException {
-        String folder1Path = properties.getBatchJob().getFolder1Path();
+        String folder1Path = properties.getBatchJob().getPrimaryFolderPath();
         
         logger.info("Comparing and moving files from folder1: {}", folder1Path);
 
@@ -153,7 +153,7 @@ public class FolderComparisonService {
     }
 
     private void moveFileToOrganizedStructure(Path sourceFile, Path referenceFile, ComparisonResult result) throws IOException {
-        String folder1Path = properties.getBatchJob().getFolder1Path();
+        String folder1Path = properties.getBatchJob().getPrimaryFolderPath();
         
         // Create target directory based on reference file structure
         Path targetDir = Paths.get(folder1Path, referenceFile.subpath(1, referenceFile.getNameCount() - 1).toString());

@@ -56,12 +56,20 @@ public class PhotoOrganizerService {
     }
     
     public void initializeDirectories(String sourceFolder) {
-        this.emptyFolderDirectory = new File(sourceFolder, "EmptyFolder");
-        this.duplicateImageDirectory = new File(sourceFolder, "Images/Duplicate");
-        this.originalImageDirectory = new File(sourceFolder, "Images/Original");
-        this.duplicateVideoDirectory = new File(sourceFolder, "Videos/Duplicate");
-        this.originalVideoDirectory = new File(sourceFolder, "Videos/Original");
-        this.othersDirectory = sourceFolder + "/others";
+        this.emptyFolderDirectory = new File(sourceFolder, properties.getDirectoryStructure().getEmptyFolderDirectoryName());
+        this.duplicateImageDirectory = new File(sourceFolder, 
+            properties.getDirectoryStructure().getImagesDirectoryName() + "/" + 
+            properties.getDirectoryStructure().getDuplicateSubDirectoryName());
+        this.originalImageDirectory = new File(sourceFolder, 
+            properties.getDirectoryStructure().getImagesDirectoryName() + "/" + 
+            properties.getDirectoryStructure().getOriginalSubDirectoryName());
+        this.duplicateVideoDirectory = new File(sourceFolder, 
+            properties.getDirectoryStructure().getVideosDirectoryName() + "/" + 
+            properties.getDirectoryStructure().getDuplicateSubDirectoryName());
+        this.originalVideoDirectory = new File(sourceFolder, 
+            properties.getDirectoryStructure().getVideosDirectoryName() + "/" + 
+            properties.getDirectoryStructure().getOriginalSubDirectoryName());
+        this.othersDirectory = sourceFolder + "/" + properties.getDirectoryStructure().getOthersDirectoryName();
     }
 
     public void organizePhotos(String sourceFolder) {
@@ -88,6 +96,14 @@ public class PhotoOrganizerService {
         for (File file : files) {
             if (file.isFile()) {
                 ExifData fileData = new ExifData(file);
+                // Initialize progress trackers from factory to avoid hardcoded paths
+                if (progressTrackerFactory != null) {
+                    fileData.setProgressTrackers(
+                        progressTrackerFactory.getImageErrorTracker(),
+                        progressTrackerFactory.getFileComparisonTracker(),
+                        progressTrackerFactory.getFileComparisonTracker()
+                    );
+                }
                 if (!fileData.isOther()) {
                     mediaFileService.processFile(fileData, this);
                 } else {
@@ -191,6 +207,14 @@ public class PhotoOrganizerService {
             if (file.isFile()) {
                 try {
                     ExifData fileData = new ExifData(file);
+                    // Initialize progress trackers from factory to avoid hardcoded paths
+                    if (progressTrackerFactory != null) {
+                        fileData.setProgressTrackers(
+                            progressTrackerFactory.getImageErrorTracker(),
+                            progressTrackerFactory.getFileComparisonTracker(),
+                            progressTrackerFactory.getFileComparisonTracker()
+                        );
+                    }
                     String key = mediaFileService.calculateHash(fileData.getFile().toPath());
                     if (fileHash.containsKey(key)) {
                         String originalName = fileHash.get(key).getFile().getName();

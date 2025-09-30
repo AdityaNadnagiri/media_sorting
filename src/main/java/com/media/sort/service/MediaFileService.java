@@ -4,6 +4,7 @@ import com.media.sort.model.ExifData;
 import com.media.sort.util.FileOperationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -21,16 +22,26 @@ public class MediaFileService {
 
     private static final Logger logger = LoggerFactory.getLogger(MediaFileService.class);
     
-    private final ProgressTracker mediaErrorTracker;
+    private ProgressTracker mediaErrorTracker;
+
+    @Autowired  
+    private ProgressTrackerFactory progressTrackerFactory;
 
     public MediaFileService() {
-        this.mediaErrorTracker = new ProgressTracker("logs/po/media/error.txt");
+        // mediaErrorTracker will be initialized through initializeTracker method
+    }
+    
+    private void initializeTracker() {
+        if (progressTrackerFactory != null && mediaErrorTracker == null) {
+            this.mediaErrorTracker = progressTrackerFactory.getMediaErrorTracker();
+        }
     }
 
     /**
      * Processes a file, calculating its hash and moving it to a new location.
      */
     public void processFile(ExifData fileData, PhotoOrganizerService photoOrganizerService) {
+        initializeTracker(); // Ensure tracker is initialized
         try {
             String key = calculateHash(fileData.getFile().toPath());
             photoOrganizerService.moveImageOrVideoFile(fileData, key);
