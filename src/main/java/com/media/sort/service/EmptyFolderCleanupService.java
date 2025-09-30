@@ -2,7 +2,9 @@ package com.media.sort.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -16,12 +18,18 @@ public class EmptyFolderCleanupService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmptyFolderCleanupService.class);
     
-    private final ProgressTracker cleanupTracker;
+    private ProgressTracker cleanupTracker;
     private int foldersDeleted = 0;
     private int foldersSkipped = 0;
 
-    public EmptyFolderCleanupService() {
-        this.cleanupTracker = new ProgressTracker("logs/cleanup/empty-folders.txt");
+    @Autowired
+    private ProgressTrackerFactory progressTrackerFactory;
+    
+    // Initialize progress tracker after Spring injection
+    public void initializeProgressTracker() {
+        if (progressTrackerFactory != null && cleanupTracker == null) {
+            this.cleanupTracker = progressTrackerFactory.getCleanupTracker();
+        }
     }
 
     /**
@@ -32,6 +40,7 @@ public class EmptyFolderCleanupService {
      * @return CleanupResult containing statistics about the cleanup operation
      */
     public CleanupResult deleteEmptyFolders(Path rootPath) {
+        initializeProgressTracker(); // Ensure progress tracker is initialized
         logger.info("Starting empty folder cleanup for: {}", rootPath);
         foldersDeleted = 0;
         foldersSkipped = 0;

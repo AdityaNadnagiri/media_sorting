@@ -1,6 +1,7 @@
 package com.media.sort.service;
 
 import com.media.sort.model.ExifData;
+import com.media.sort.util.FileOperationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -97,7 +98,7 @@ public class MediaFileService {
         try {
             if (createDirectory(destinationFolder)) {
                 destinationPath = destinationFolder.toPath().resolve(currentFile.getName());
-                destinationPath = findUniqueFileName(destinationPath);
+                destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
                 Path path = Files.move(currentFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
                 fileData.setFile(path.toFile());
                 fileData.logFileDetails("Moved to " + destinationPath);
@@ -110,29 +111,11 @@ public class MediaFileService {
     }
 
     /**
-     * Finds a unique file name for a file by appending a number to the file name if a file with the same name already exists.
-     *
-     * @param path The path of the file.
-     * @return The path of the file with a unique file name.
+     * @deprecated Use FileOperationUtils.findUniqueFileName instead
      */
+    @Deprecated
     public static synchronized Path findUniqueFileName(Path path) {
-        String fileName = path.getFileName().toString();
-        String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-        String extension = fileName.substring(fileName.lastIndexOf('.'));
-
-        // Remove parentheses and spaces, and copy indicators
-        baseName = baseName.replaceAll("\\s*\\(\\d+\\)\\s*", "")
-                          .replaceAll("(?i) - copy", "")
-                          .replaceAll("(?i)copy", "");
-        
-        Path uniquePath = path.resolveSibling(baseName + extension);
-        int counter = 1;
-
-        while (Files.exists(uniquePath)) {
-            uniquePath = path.resolveSibling(baseName + "(" + counter + ")" + extension);
-            counter++;
-        }
-        return uniquePath;
+        return FileOperationUtils.findUniqueFileName(path);
     }
 
     /**

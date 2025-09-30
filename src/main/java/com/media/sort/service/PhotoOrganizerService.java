@@ -23,7 +23,7 @@ public class PhotoOrganizerService {
 
     private static final Logger logger = LoggerFactory.getLogger(PhotoOrganizerService.class);
     
-    private final ProgressTracker poErrorTracker;
+    private ProgressTracker poErrorTracker;
     private final Map<String, ExifData> fileHash = new HashMap<>();
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
     
@@ -35,6 +35,9 @@ public class PhotoOrganizerService {
     
     @Autowired
     private EmptyFolderCleanupService emptyFolderCleanupService;
+    
+    @Autowired
+    private ProgressTrackerFactory progressTrackerFactory;
 
     private File emptyFolderDirectory;
     private File duplicateImageDirectory;
@@ -43,8 +46,13 @@ public class PhotoOrganizerService {
     private File originalVideoDirectory;
     private String othersDirectory;
 
-    public PhotoOrganizerService() {
-        this.poErrorTracker = new ProgressTracker("logs/po/error.txt");
+    /**
+     * Initialize progress tracker after Spring injection
+     */
+    public void initializeProgressTracker() {
+        if (progressTrackerFactory != null && poErrorTracker == null) {
+            this.poErrorTracker = progressTrackerFactory.getPhotoOrganizerErrorTracker();
+        }
     }
     
     public void initializeDirectories(String sourceFolder) {
@@ -57,6 +65,7 @@ public class PhotoOrganizerService {
     }
 
     public void organizePhotos(String sourceFolder) {
+        initializeProgressTracker(); // Ensure progress tracker is initialized
         logger.info("Starting photo organization for folder: {}", sourceFolder);
         initializeDirectories(sourceFolder);
         

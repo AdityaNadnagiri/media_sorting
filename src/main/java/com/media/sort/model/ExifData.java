@@ -10,10 +10,14 @@ import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.exif.GpsDirectory;
 import com.media.sort.service.ProgressTracker;
 import com.media.sort.service.VideoExifDataService;
+import com.media.sort.service.FileTypeRegistry;
+import com.media.sort.service.ProgressTrackerFactory;
+import com.media.sort.util.FileTypeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
 
 import java.io.File;
 import java.io.IOException;
@@ -35,15 +39,11 @@ public class ExifData {
     @Autowired
     private VideoExifDataService videoExifDataService;
 
-    private static final Set<String> IMAGE_EXTENSIONS = new HashSet<>(Arrays.asList(
-        "arw", "jpg", "jpeg", "gif", "bmp", "ico", "tif", "tiff", "raw", "indd", 
-        "ai", "eps", "pdf", "heic", "cr2", "nrw", "k25"
-    ));
+    @Autowired
+    private FileTypeRegistry fileTypeRegistry;
     
-    private static final Set<String> VIDEO_EXTENSIONS = new HashSet<>(Arrays.asList(
-        "mp4", "mkv", "flv", "avi", "mov", "wmv", "rm", "mpg", "mpeg", 
-        "3gp", "vob", "m4v", "3g2", "divx", "xvid"
-    ));
+    @Autowired
+    private ProgressTrackerFactory progressTrackerFactory;
     
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -70,6 +70,8 @@ public class ExifData {
         this();
         processFile(file);
     }
+
+
     
     public void processFile(File file) {
         try {
@@ -239,13 +241,7 @@ public class ExifData {
         int dotIndex = fileName.lastIndexOf('.');
         extension = (dotIndex == -1) ? "" : fileName.substring(dotIndex + 1).toLowerCase();
         
-        if (IMAGE_EXTENSIONS.contains(extension)) {
-            type = "image";
-        } else if (VIDEO_EXTENSIONS.contains(extension)) {
-            type = "video";
-        } else {
-            type = "other";
-        }
+        type = fileTypeRegistry.getFileType(extension);
     }
 
     public void determineFolderDate() {
@@ -258,11 +254,15 @@ public class ExifData {
         }
     }
 
+    // Constructor initialization replaces PostConstruct
+    
     public void logFileDetails(String message) {
-        fileTracker.saveProgress(file.getName() + "$" + file.length() + "$" + 
-                               file.getAbsolutePath() + "$" + deviceName + "$" + 
-                               deviceModel + "$" + dateTaken + "$" + dateCreated + "$" + 
-                               dateModified + "$" + latitude + "$" + longitude + "$" + message);
+        if (fileTracker != null) {
+            fileTracker.saveProgress(file.getName() + "$" + file.length() + "$" + 
+                                   file.getAbsolutePath() + "$" + deviceName + "$" + 
+                                   deviceModel + "$" + dateTaken + "$" + dateCreated + "$" + 
+                                   dateModified + "$" + latitude + "$" + longitude + "$" + message);
+        }
     }
 
     // Getters and setters
