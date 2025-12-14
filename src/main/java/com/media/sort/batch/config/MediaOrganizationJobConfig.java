@@ -23,7 +23,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import java.io.File;
-import java.util.HashMap;
+
 import java.util.Map;
 
 /**
@@ -48,7 +48,7 @@ public class MediaOrganizationJobConfig {
      */
     @Bean
     public Map<String, ExifData> mediaFileHashMap() {
-        return new HashMap<>();
+        return new java.util.concurrent.ConcurrentHashMap<>();
     }
 
     /**

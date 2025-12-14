@@ -79,9 +79,21 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
                     fileData.getFile().getName(), folderDate);
         }
 
-        if (fileHashMap.containsKey(fileHash)) {
-            // Duplicate file found
-            ExifData originalFileData = fileHashMap.get(fileHash);
+        ExifData originalFileData = fileHashMap.get(fileHash);
+
+        // Critical Check: Does the original file ACTUALLY exist?
+        // If it's in the map but missing from disk, we must treat the current file as
+        // the new original.
+        if (originalFileData != null && !originalFileData.getFile().exists()) {
+            logger.warn(
+                    "Original file registered in map but missing from disk: {}. Treating current file as new Original.",
+                    originalFileData.getFile().getAbsolutePath());
+            originalFileData = null; // Reset so we enter the "First occurrence" block
+            fileHashMap.remove(fileHash); // Remove stale entry
+        }
+
+        if (originalFileData != null) {
+            // Duplicate file found AND original exists on disk
             folderDate = getNewFolderDateForDuplicates(fileData, originalFileData);
             boolean isAfter = fileData.isAfter(originalFileData);
 
@@ -93,9 +105,17 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
                             fileData.getFile().getName(), originalFileData.getFile().getName());
                 } else {
                     // Current file is OLDER - it's the true original, move newer one to duplicates
+                    // 1. Move the existing (newer) original to duplicates
                     mediaFileService.executeMove(originalFileData, new File(duplicateImageDirectory, folderDate), true);
+
+                    // 2. Move the current (older) file to originals
                     mediaFileService.executeMove(fileData, new File(originalImageDirectory, folderDate), false);
-                    fileHashMap.put(fileHash, fileData); // Update map with older (true original) file
+
+                    // 3. Update map ONLY after successful moves
+                    if (fileData.getFile().exists()) { // Verify move succeeded
+                        fileHashMap.put(fileHash, fileData);
+                    }
+
                     logger.info("Moved newer duplicate: {} to Duplicates, kept older original: {}",
                             originalFileData.getFile().getName(), fileData.getFile().getName());
                 }
@@ -107,9 +127,17 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
                             fileData.getFile().getName(), originalFileData.getFile().getName());
                 } else {
                     // Current file is OLDER - it's the true original, move newer one to duplicates
+                    // 1. Move the existing (newer) original to duplicates
                     mediaFileService.executeMove(originalFileData, new File(duplicateVideoDirectory, folderDate), true);
+
+                    // 2. Move the current (older) file to originals
                     mediaFileService.executeMove(fileData, new File(originalVideoDirectory, folderDate), false);
-                    fileHashMap.put(fileHash, fileData); // Update map with older (true original) file
+
+                    // 3. Update map ONLY after successful moves
+                    if (fileData.getFile().exists()) {
+                        fileHashMap.put(fileHash, fileData);
+                    }
+
                     logger.info("Moved newer duplicate: {} to Duplicates, kept older original: {}",
                             originalFileData.getFile().getName(), fileData.getFile().getName());
                 }
@@ -121,8 +149,14 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
             } else {
                 mediaFileService.executeMove(fileData, new File(originalVideoDirectory, folderDate), false);
             }
-            fileHashMap.put(fileHash, fileData);
-            logger.info("Moved original file: {} to {}", fileData.getFile().getName(), folderDate);
+
+            // Only add to map if move succeeded
+            if (fileData.getFile().exists()) {
+                fileHashMap.put(fileHash, fileData);
+                logger.info("Moved original file: {} to {}", fileData.getFile().getName(), folderDate);
+            } else {
+                logger.error("Failed to move original file, not adding to map: {}", fileData.getFile().getName());
+            }
         }
     }
 
