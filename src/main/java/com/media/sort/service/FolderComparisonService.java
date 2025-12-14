@@ -25,7 +25,7 @@ public class FolderComparisonService {
 
     @Autowired
     private ProgressTracker progressTracker;
-    
+
     @Autowired
     private MediaFileService mediaFileService;
 
@@ -33,6 +33,7 @@ public class FolderComparisonService {
 
     /**
      * Main method to compare two folders and move duplicate files
+     * 
      * @return ComparisonResult with statistics
      */
     public ComparisonResult compareAndMoveFiles() {
@@ -40,9 +41,9 @@ public class FolderComparisonService {
         ExecutorService executor = null;
 
         try {
-            logger.info("Starting folder comparison between {} and {}", 
-                properties.getBatchJob().getPrimaryFolderPath(), 
-                properties.getBatchJob().getSecondaryFolderPath());
+            logger.info("Starting folder comparison between {} and {}",
+                    properties.getBatchJob().getPrimaryFolderPath(),
+                    properties.getBatchJob().getSecondaryFolderPath());
 
             executor = Executors.newFixedThreadPool(properties.getBatchJob().getMaxThreadPoolSize());
 
@@ -55,8 +56,8 @@ public class FolderComparisonService {
 
             // Process folder1 files and compare/move
             result = processFolder1Files(result);
-            logger.info("Processed {} files from folder1, moved {} files", 
-                result.getFolder1ProcessedFiles(), result.getMovedFiles());
+            logger.info("Processed {} files from folder1, moved {} files",
+                    result.getFolder1ProcessedFiles(), result.getMovedFiles());
 
             result.setStatus("SUCCESS");
             result.setMessage("Folder comparison completed successfully");
@@ -81,14 +82,14 @@ public class FolderComparisonService {
     private int processFolder2Files() throws IOException {
         int processedCount = 0;
         String folder2Path = properties.getBatchJob().getSecondaryFolderPath();
-        
+
         logger.info("Building hash map from folder2: {}", folder2Path);
 
         try (Stream<Path> paths = Files.walk(Paths.get(folder2Path))) {
             processedCount = (int) paths.parallel()
-                .filter(Files::isRegularFile)
-                .peek(this::addToMap)
-                .count();
+                    .filter(Files::isRegularFile)
+                    .peek(this::addToMap)
+                    .count();
         } catch (IOException e) {
             logger.error("Error processing folder2 files", e);
             progressTracker.saveProgress("ERROR - processFolder2Files: " + e.getMessage());
@@ -100,22 +101,23 @@ public class FolderComparisonService {
 
     private ComparisonResult processFolder1Files(ComparisonResult result) throws IOException {
         String folder1Path = properties.getBatchJob().getPrimaryFolderPath();
-        
+
         logger.info("Comparing and moving files from folder1: {}", folder1Path);
 
         try (Stream<Path> paths = Files.walk(Paths.get(folder1Path))) {
             paths.parallel()
-                .filter(Files::isRegularFile)
-                .forEach(file -> {
-                    try {
-                        compareAndMove(file, result);
-                        result.incrementFolder1ProcessedFiles();
-                        progressTracker.saveProgress("folder1_progress: " + file.toString());
-                    } catch (Exception e) {
-                        logger.error("Error processing file: {}", file, e);
-                        progressTracker.saveProgress("ERROR - compareAndMove: Error processing " + file + ": " + e.getMessage());
-                    }
-                });
+                    .filter(Files::isRegularFile)
+                    .forEach(file -> {
+                        try {
+                            compareAndMove(file, result);
+                            result.incrementFolder1ProcessedFiles();
+                            progressTracker.saveProgress("folder1_progress: " + file.toString());
+                        } catch (Exception e) {
+                            logger.error("Error processing file: {}", file, e);
+                            progressTracker.saveProgress(
+                                    "ERROR - compareAndMove: Error processing " + file + ": " + e.getMessage());
+                        }
+                    });
         } catch (IOException e) {
             logger.error("Error processing folder1 files", e);
             progressTracker.saveProgress("ERROR - processFolder1Files: " + e.getMessage());
@@ -132,7 +134,8 @@ public class FolderComparisonService {
             progressTracker.saveProgress("folder2_progress: " + file + ":" + fileHash);
         } catch (NoSuchAlgorithmException | IOException e) {
             logger.error("Error calculating hash for file: {}", file, e);
-            progressTracker.saveProgress("ERROR - addToMap: Error calculating hash for " + file + ": " + e.getMessage());
+            progressTracker
+                    .saveProgress("ERROR - addToMap: Error calculating hash for " + file + ": " + e.getMessage());
         }
     }
 
@@ -140,7 +143,7 @@ public class FolderComparisonService {
         try {
             String fileHash = mediaFileService.calculateHash(file);
             progressTracker.saveProgress("folder1_progress: " + file.toString() + ":" + fileHash);
-            
+
             Path folder2File = folder2Files.get(fileHash);
             if (folder2File != null) {
                 moveFileToOrganizedStructure(file, folder2File, result);
@@ -152,24 +155,27 @@ public class FolderComparisonService {
         }
     }
 
-    private void moveFileToOrganizedStructure(Path sourceFile, Path referenceFile, ComparisonResult result) throws IOException {
+    private void moveFileToOrganizedStructure(Path sourceFile, Path referenceFile, ComparisonResult result)
+            throws IOException {
         String folder1Path = properties.getBatchJob().getPrimaryFolderPath();
-        
+
         // Create target directory based on reference file structure
         Path targetDir = Paths.get(folder1Path, referenceFile.subpath(1, referenceFile.getNameCount() - 1).toString());
         Files.createDirectories(targetDir);
-        
+
         Path destinationPath = targetDir.resolve(sourceFile.getFileName());
-        
+
         if (Files.exists(sourceFile)) {
             try {
-                Path uniqueDestination = MediaFileService.findUniqueFileName(destinationPath);
+                Path uniqueDestination = com.media.sort.util.FileOperationUtils.findUniqueFileName(destinationPath);
                 Files.move(sourceFile, uniqueDestination, StandardCopyOption.REPLACE_EXISTING);
-                progressTracker.saveProgress("move_progress: " + sourceFile.toString() + " -> " + uniqueDestination.toString());
+                progressTracker.saveProgress(
+                        "move_progress: " + sourceFile.toString() + " -> " + uniqueDestination.toString());
                 logger.debug("Moved file: {} -> {}", sourceFile, uniqueDestination);
             } catch (IOException e) {
                 logger.error("Error moving file from {} to {}", sourceFile, destinationPath, e);
-                progressTracker.saveProgress("ERROR - moveFile: Error moving " + sourceFile + " to " + destinationPath + ": " + e.getMessage());
+                progressTracker.saveProgress("ERROR - moveFile: Error moving " + sourceFile + " to " + destinationPath
+                        + ": " + e.getMessage());
                 throw e;
             }
         } else {

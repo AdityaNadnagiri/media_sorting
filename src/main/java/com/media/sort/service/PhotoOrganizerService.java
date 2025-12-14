@@ -22,20 +22,20 @@ import java.util.Objects;
 public class PhotoOrganizerService {
 
     private static final Logger logger = LoggerFactory.getLogger(PhotoOrganizerService.class);
-    
+
     private ProgressTracker poErrorTracker;
     private final Map<String, ExifData> fileHash = new HashMap<>();
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-    
+
     @Autowired
     private MediaSortingProperties properties;
-    
+
     @Autowired
     private MediaFileService mediaFileService;
-    
+
     @Autowired
     private EmptyFolderCleanupService emptyFolderCleanupService;
-    
+
     @Autowired
     private ProgressTrackerFactory progressTrackerFactory;
 
@@ -54,21 +54,22 @@ public class PhotoOrganizerService {
             this.poErrorTracker = progressTrackerFactory.getPhotoOrganizerErrorTracker();
         }
     }
-    
+
     public void initializeDirectories(String sourceFolder) {
-        this.emptyFolderDirectory = new File(sourceFolder, properties.getDirectoryStructure().getEmptyFolderDirectoryName());
-        this.duplicateImageDirectory = new File(sourceFolder, 
-            properties.getDirectoryStructure().getImagesDirectoryName() + "/" + 
-            properties.getDirectoryStructure().getDuplicateSubDirectoryName());
-        this.originalImageDirectory = new File(sourceFolder, 
-            properties.getDirectoryStructure().getImagesDirectoryName() + "/" + 
-            properties.getDirectoryStructure().getOriginalSubDirectoryName());
-        this.duplicateVideoDirectory = new File(sourceFolder, 
-            properties.getDirectoryStructure().getVideosDirectoryName() + "/" + 
-            properties.getDirectoryStructure().getDuplicateSubDirectoryName());
-        this.originalVideoDirectory = new File(sourceFolder, 
-            properties.getDirectoryStructure().getVideosDirectoryName() + "/" + 
-            properties.getDirectoryStructure().getOriginalSubDirectoryName());
+        this.emptyFolderDirectory = new File(sourceFolder,
+                properties.getDirectoryStructure().getEmptyFolderDirectoryName());
+        this.duplicateImageDirectory = new File(sourceFolder,
+                properties.getDirectoryStructure().getImagesDirectoryName() + "/" +
+                        properties.getDirectoryStructure().getDuplicateSubDirectoryName());
+        this.originalImageDirectory = new File(sourceFolder,
+                properties.getDirectoryStructure().getImagesDirectoryName() + "/" +
+                        properties.getDirectoryStructure().getOriginalSubDirectoryName());
+        this.duplicateVideoDirectory = new File(sourceFolder,
+                properties.getDirectoryStructure().getVideosDirectoryName() + "/" +
+                        properties.getDirectoryStructure().getDuplicateSubDirectoryName());
+        this.originalVideoDirectory = new File(sourceFolder,
+                properties.getDirectoryStructure().getVideosDirectoryName() + "/" +
+                        properties.getDirectoryStructure().getOriginalSubDirectoryName());
         this.othersDirectory = sourceFolder + "/" + properties.getDirectoryStructure().getOthersDirectoryName();
     }
 
@@ -76,33 +77,32 @@ public class PhotoOrganizerService {
         initializeProgressTracker(); // Ensure progress tracker is initialized
         logger.info("Starting photo organization for folder: {}", sourceFolder);
         initializeDirectories(sourceFolder);
-        
+
         File sourceDirectory = new File(sourceFolder);
         if (!sourceDirectory.exists() || !sourceDirectory.isDirectory()) {
             logger.error("Source directory does not exist or is not a directory: {}", sourceFolder);
             poErrorTracker.saveProgress("Not directory: " + sourceFolder);
             return;
         }
-        
+
         File[] files = sourceDirectory.listFiles();
         MediaFileService.createDirectory(emptyFolderDirectory);
-        
+
         if (files == null) {
             logger.warn("Empty directory: {}", sourceFolder);
             poErrorTracker.saveProgress("Empty directory: " + sourceFolder);
             return;
         }
-        
+
         for (File file : files) {
             if (file.isFile()) {
                 ExifData fileData = new ExifData(file);
                 // Initialize progress trackers from factory to avoid hardcoded paths
                 if (progressTrackerFactory != null) {
                     fileData.setProgressTrackers(
-                        progressTrackerFactory.getImageErrorTracker(),
-                        progressTrackerFactory.getFileComparisonTracker(),
-                        progressTrackerFactory.getFileComparisonTracker()
-                    );
+                            progressTrackerFactory.getImageErrorTracker(),
+                            progressTrackerFactory.getFileComparisonTracker(),
+                            progressTrackerFactory.getFileComparisonTracker());
                 }
                 if (!fileData.isOther()) {
                     mediaFileService.processFile(fileData, this);
@@ -117,12 +117,12 @@ public class PhotoOrganizerService {
                 }
             }
         }
-        
+
         // Clean up empty folders using the enhanced service
         logger.info("Starting enhanced empty folder cleanup...");
         EmptyFolderCleanupService.CleanupResult result = emptyFolderCleanupService.deleteEmptyFolders(sourceFolder);
         logger.info("Empty folder cleanup completed: {}", result);
-        
+
         logger.info("Completed photo organization for folder: {}", sourceFolder);
     }
 
@@ -135,10 +135,11 @@ public class PhotoOrganizerService {
             ExifData originalFileData = fileHash.get(key);
             folderDate = getNewFolderDateForDuplicates(fileData, originalFileData);
             boolean isAfter = fileData.isAfter(originalFileData);
-            
+
             if (isImage) {
                 if (isAfter) {
-                    mediaFileService.executeMove(fileData, new File(duplicateImageDirectory, originalFileData.getFolderDate()));
+                    mediaFileService.executeMove(fileData,
+                            new File(duplicateImageDirectory, originalFileData.getFolderDate()));
                 } else {
                     mediaFileService.executeMove(originalFileData, new File(duplicateImageDirectory, folderDate));
                     mediaFileService.executeMove(fileData, new File(originalImageDirectory, folderDate));
@@ -146,7 +147,8 @@ public class PhotoOrganizerService {
                 }
             } else {
                 if (isAfter) {
-                    mediaFileService.executeMove(fileData, new File(duplicateVideoDirectory, originalFileData.getFolderDate()));
+                    mediaFileService.executeMove(fileData,
+                            new File(duplicateVideoDirectory, originalFileData.getFolderDate()));
                 } else {
                     mediaFileService.executeMove(originalFileData, new File(duplicateVideoDirectory, folderDate));
                     mediaFileService.executeMove(fileData, new File(originalVideoDirectory, folderDate));
@@ -189,7 +191,8 @@ public class PhotoOrganizerService {
         if (folder.isDirectory() && Objects.requireNonNull(folder.list()).length == 0) {
             boolean moved = folder.renameTo(new File(emptyFolderDirectory, folder.getName()));
             if (moved) {
-                logger.info("Moved empty folder {} to {}", folder.getAbsolutePath(), emptyFolderDirectory.getAbsolutePath());
+                logger.info("Moved empty folder {} to {}", folder.getAbsolutePath(),
+                        emptyFolderDirectory.getAbsolutePath());
             } else {
                 logger.warn("Failed to move empty folder: {}", folder.getAbsolutePath());
             }
@@ -202,7 +205,7 @@ public class PhotoOrganizerService {
             logger.warn("No files found in duplicates source: {}", duplicatesSource.getAbsolutePath());
             return;
         }
-        
+
         for (File file : files) {
             if (file.isFile()) {
                 try {
@@ -210,16 +213,15 @@ public class PhotoOrganizerService {
                     // Initialize progress trackers from factory to avoid hardcoded paths
                     if (progressTrackerFactory != null) {
                         fileData.setProgressTrackers(
-                            progressTrackerFactory.getImageErrorTracker(),
-                            progressTrackerFactory.getFileComparisonTracker(),
-                            progressTrackerFactory.getFileComparisonTracker()
-                        );
+                                progressTrackerFactory.getImageErrorTracker(),
+                                progressTrackerFactory.getFileComparisonTracker(),
+                                progressTrackerFactory.getFileComparisonTracker());
                     }
                     String key = mediaFileService.calculateHash(fileData.getFile().toPath());
                     if (fileHash.containsKey(key)) {
                         String originalName = fileHash.get(key).getFile().getName();
                         Path originalPath = file.toPath().getParent().resolve(originalName);
-                        Path uniquePath = MediaFileService.findUniqueFileName(originalPath);
+                        Path uniquePath = com.media.sort.util.FileOperationUtils.findUniqueFileName(originalPath);
                         Files.move(file.toPath(), uniquePath);
                         logger.info("File renamed to: {}", uniquePath);
                     } else {

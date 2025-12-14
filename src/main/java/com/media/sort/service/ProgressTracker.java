@@ -2,7 +2,6 @@ package com.media.sort.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
@@ -13,9 +12,9 @@ import java.util.stream.Stream;
 
 @Component
 public class ProgressTracker {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(ProgressTracker.class);
-    
+
     private final String directory;
     private final String baseFileName;
     private int linesCount = 0;
@@ -24,7 +23,7 @@ public class ProgressTracker {
     public ProgressTracker() {
         this("logs");
     }
-    
+
     public ProgressTracker(String filePath) {
         if (filePath.contains("/") || filePath.contains("\\")) {
             // It's a full file path
@@ -39,7 +38,7 @@ public class ProgressTracker {
         createDirectoryIfNotExists();
         this.currentFile = getLatestFile();
     }
-    
+
     private void createDirectoryIfNotExists() {
         try {
             Files.createDirectories(Paths.get(directory));
@@ -48,7 +47,7 @@ public class ProgressTracker {
             throw new UncheckedIOException(e);
         }
     }
-    
+
     private Path getLatestFile() {
         try (Stream<Path> paths = Files.list(Paths.get(directory))) {
             return paths
@@ -115,7 +114,8 @@ public class ProgressTracker {
     }
 
     public void saveFolder2Files(ConcurrentHashMap<String, String> folder2Files) {
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(Paths.get(directory, "folder2Files.ser").toString()))) {
+        try (ObjectOutputStream oos = new ObjectOutputStream(
+                new FileOutputStream(Paths.get(directory, "folder2Files.ser").toString()))) {
             oos.writeObject(folder2Files);
         } catch (IOException e) {
             logger.error("Failed to save folder2Files mapping", e);
@@ -124,7 +124,8 @@ public class ProgressTracker {
 
     @SuppressWarnings("unchecked")
     public ConcurrentHashMap<String, String> loadFolder2Files() {
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(Paths.get(directory, "folder2Files.ser").toString()))) {
+        try (ObjectInputStream ois = new ObjectInputStream(
+                new FileInputStream(Paths.get(directory, "folder2Files.ser").toString()))) {
             return (ConcurrentHashMap<String, String>) ois.readObject();
         } catch (Exception e) {
             logger.debug("No existing folder2Files mapping found, returning empty map");
@@ -136,7 +137,7 @@ public class ProgressTracker {
         try (RandomAccessFile raf = new RandomAccessFile(currentFile.toString(), "rw")) {
             long pointer = raf.length() - 1;
             StringBuilder sb = new StringBuilder();
-            
+
             while (pointer >= 0) {
                 raf.seek(pointer);
                 char c = (char) raf.read();

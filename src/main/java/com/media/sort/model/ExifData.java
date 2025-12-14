@@ -10,14 +10,9 @@ import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.exif.GpsDirectory;
 import com.media.sort.service.ProgressTracker;
 import com.media.sort.service.VideoExifDataService;
-import com.media.sort.service.FileTypeRegistry;
-import com.media.sort.service.ProgressTrackerFactory;
-import com.media.sort.util.FileTypeUtils;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-
 
 import java.io.File;
 import java.io.IOException;
@@ -27,24 +22,31 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-@Component
+/**
+ * Data model for EXIF metadata extracted from media files.
+ * This is NOT a Spring component - instances are created directly.
+ */
 public class ExifData {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(ExifData.class);
-    
+
+    // Static extension sets for file type detection (no dependency injection
+    // needed)
+    private static final Set<String> IMAGE_EXTENSIONS = new HashSet<>(Arrays.asList(
+            "arw", "jpg", "jpeg", "gif", "bmp", "ico", "tif", "tiff", "raw", "indd",
+            "ai", "eps", "pdf", "heic", "cr2", "nrw", "k25", "png", "webp"));
+
+    private static final Set<String> VIDEO_EXTENSIONS = new HashSet<>(Arrays.asList(
+            "mp4", "mkv", "flv", "avi", "mov", "wmv", "rm", "mpg", "mpeg",
+            "3gp", "vob", "m4v", "3g2", "divx", "xvid", "webm"));
+
     private ProgressTracker imageErrorTracker;
     private ProgressTracker compressionTracker;
     private ProgressTracker fileTracker;
-    
-    @Autowired
+
+    // Dependencies passed via setter methods
     private VideoExifDataService videoExifDataService;
 
-    @Autowired
-    private FileTypeRegistry fileTypeRegistry;
-    
-    @Autowired
-    private ProgressTrackerFactory progressTrackerFactory;
-    
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
     // File properties
@@ -62,7 +64,8 @@ public class ExifData {
 
     // Default constructor - trackers will be initialized via ProgressTrackerFactory
     public ExifData() {
-        // Trackers will be set via setProgressTrackers method when ProgressTrackerFactory is available
+        // Trackers will be set via setProgressTrackers method when
+        // ProgressTrackerFactory is available
         // This avoids hardcoded paths
     }
 
@@ -70,68 +73,74 @@ public class ExifData {
         this();
         processFile(file);
     }
-    
+
     /**
      * Initialize progress trackers using ProgressTrackerFactory
-     * This method should be called by services that have access to ProgressTrackerFactory
+     * This method should be called by services that have access to
+     * ProgressTrackerFactory
      */
-    public void setProgressTrackers(ProgressTracker imageErrorTracker, 
-                                  ProgressTracker compressionTracker, 
-                                  ProgressTracker fileTracker) {
+    public void setProgressTrackers(ProgressTracker imageErrorTracker,
+            ProgressTracker compressionTracker,
+            ProgressTracker fileTracker) {
         this.imageErrorTracker = imageErrorTracker;
         this.compressionTracker = compressionTracker;
         this.fileTracker = fileTracker;
     }
 
+    /**
+     * Set VideoExifDataService dependency
+     */
+    public void setVideoExifDataService(VideoExifDataService videoExifDataService) {
+        this.videoExifDataService = videoExifDataService;
+    }
 
-    
     public void processFile(File file) {
         try {
             this.file = file;
             setImageExifDataType();
-            
+
             if (isImage()) {
                 processImageFile();
-            } else if (isVideo()) {
+            } else if (isVideo() && videoExifDataService != null) {
                 videoExifDataService.processVideoFile(this);
             }
-            
+
             reorderDates();
             determineFolderDate();
-            
+
         } catch (IOException | ImageProcessingException e) {
             logger.error("Failed to process file: {}", file.getAbsolutePath(), e);
             this.type = "other";
             imageErrorTracker.saveProgress("ExifData file: " + file);
         }
     }
-    
+
     private void processImageFile() throws IOException, ImageProcessingException {
         Metadata metadata = ImageMetadataReader.readMetadata(file);
 
         BasicFileAttributes attr = Files.readAttributes(file.toPath(), BasicFileAttributes.class);
         this.dateCreated = new Date(attr.creationTime().toMillis());
         this.dateModified = new Date(attr.lastModifiedTime().toMillis());
-        
+
         for (Directory directory : metadata.getDirectories()) {
             if (directory instanceof ExifSubIFDDirectory) {
                 processExifDirectory((ExifSubIFDDirectory) directory);
             } else if (directory instanceof GpsDirectory && !directory.getTags().isEmpty()) {
                 processGpsDirectory((GpsDirectory) directory);
             }
-            
-            if (deviceName != null && deviceModel != null && dateTaken != null && 
-                latitude != null && longitude != null) {
+
+            if (deviceName != null && deviceModel != null && dateTaken != null &&
+                    latitude != null && longitude != null) {
                 break;
             }
         }
     }
-    
+
     private void processExifDirectory(ExifSubIFDDirectory directory) {
         if (dateTaken == null) {
             dateTaken = directory.getDateOriginal();
         }
-        
+
         for (Tag tag : directory.getParent().getTags()) {
             if ("Make".equals(tag.getTagName()) && deviceName == null) {
                 deviceName = tag.getDescription();
@@ -139,20 +148,20 @@ public class ExifData {
                     deviceName = deviceName.trim();
                 }
             }
-            
+
             if ("Model".equals(tag.getTagName()) && deviceModel == null) {
                 deviceModel = tag.getDescription();
                 if (deviceModel != null) {
                     deviceModel = deviceModel.trim();
                 }
             }
-            
+
             if (deviceName != null && deviceModel != null) {
                 break;
             }
         }
     }
-    
+
     private void processGpsDirectory(GpsDirectory directory) {
         GeoLocation geoLocation = directory.getGeoLocation();
         if (geoLocation != null) {
@@ -189,7 +198,7 @@ public class ExifData {
             dateTaken = !dates.isEmpty() ? dates.get(0) : null;
             dateCreated = dates.size() > 1 ? dates.get(1) : null;
             dateModified = dates.size() > 2 ? dates.get(2) : null;
-            
+
         } catch (ParseException e) {
             logger.error("Failed to parse threshold date", e);
             imageErrorTracker.saveProgress("ReorderDates file: " + file);
@@ -209,9 +218,9 @@ public class ExifData {
     }
 
     public boolean isAfter(ExifData existingFileData) {
-        compressionTracker.saveProgress("Compared " + file.getAbsolutePath() + 
-                                       " $ to $ " + existingFileData.file.getAbsolutePath());
-        
+        compressionTracker.saveProgress("Compared " + file.getAbsolutePath() +
+                " $ to $ " + existingFileData.file.getAbsolutePath());
+
         if (dateTaken != null && existingFileData.dateTaken != null) {
             if (dateTaken.equals(existingFileData.dateTaken)) {
                 if (dateCreated != null && existingFileData.dateCreated != null) {
@@ -252,8 +261,15 @@ public class ExifData {
         String fileName = file.getName();
         int dotIndex = fileName.lastIndexOf('.');
         extension = (dotIndex == -1) ? "" : fileName.substring(dotIndex + 1).toLowerCase();
-        
-        type = fileTypeRegistry.getFileType(extension);
+
+        // Use static extension sets for reliable file type detection
+        if (IMAGE_EXTENSIONS.contains(extension)) {
+            type = "image";
+        } else if (VIDEO_EXTENSIONS.contains(extension)) {
+            type = "video";
+        } else {
+            type = "other";
+        }
     }
 
     public void determineFolderDate() {
@@ -267,47 +283,102 @@ public class ExifData {
     }
 
     // Constructor initialization replaces PostConstruct
-    
+
     public void logFileDetails(String message) {
         if (fileTracker != null) {
-            fileTracker.saveProgress(file.getName() + "$" + file.length() + "$" + 
-                                   file.getAbsolutePath() + "$" + deviceName + "$" + 
-                                   deviceModel + "$" + dateTaken + "$" + dateCreated + "$" + 
-                                   dateModified + "$" + latitude + "$" + longitude + "$" + message);
+            fileTracker.saveProgress(file.getName() + "$" + file.length() + "$" +
+                    file.getAbsolutePath() + "$" + deviceName + "$" +
+                    deviceModel + "$" + dateTaken + "$" + dateCreated + "$" +
+                    dateModified + "$" + latitude + "$" + longitude + "$" + message);
         }
     }
 
     // Getters and setters
-    public File getFile() { return file; }
-    public void setFile(File file) { this.file = file; }
-    
-    public String getDeviceName() { return deviceName; }
-    public void setDeviceName(String deviceName) { this.deviceName = deviceName; }
-    
-    public String getDeviceModel() { return deviceModel; }
-    public void setDeviceModel(String deviceModel) { this.deviceModel = deviceModel; }
-    
-    public Date getDateTaken() { return dateTaken; }
-    public void setDateTaken(Date dateTaken) { this.dateTaken = dateTaken; }
-    
-    public Date getDateCreated() { return dateCreated; }
-    public void setDateCreated(Date dateCreated) { this.dateCreated = dateCreated; }
-    
-    public Date getDateModified() { return dateModified; }
-    public void setDateModified(Date dateModified) { this.dateModified = dateModified; }
-    
-    public Double getLatitude() { return latitude; }
-    public void setLatitude(Double latitude) { this.latitude = latitude; }
-    
-    public Double getLongitude() { return longitude; }
-    public void setLongitude(Double longitude) { this.longitude = longitude; }
-    
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
-    
-    public String getFolderDate() { return folderDate; }
-    public void setFolderDate(String folderDate) { this.folderDate = folderDate; }
-    
-    public String getExtension() { return extension; }
-    public void setExtension(String extension) { this.extension = extension; }
+    public File getFile() {
+        return file;
+    }
+
+    public void setFile(File file) {
+        this.file = file;
+    }
+
+    public String getDeviceName() {
+        return deviceName;
+    }
+
+    public void setDeviceName(String deviceName) {
+        this.deviceName = deviceName;
+    }
+
+    public String getDeviceModel() {
+        return deviceModel;
+    }
+
+    public void setDeviceModel(String deviceModel) {
+        this.deviceModel = deviceModel;
+    }
+
+    public Date getDateTaken() {
+        return dateTaken;
+    }
+
+    public void setDateTaken(Date dateTaken) {
+        this.dateTaken = dateTaken;
+    }
+
+    public Date getDateCreated() {
+        return dateCreated;
+    }
+
+    public void setDateCreated(Date dateCreated) {
+        this.dateCreated = dateCreated;
+    }
+
+    public Date getDateModified() {
+        return dateModified;
+    }
+
+    public void setDateModified(Date dateModified) {
+        this.dateModified = dateModified;
+    }
+
+    public Double getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(Double latitude) {
+        this.latitude = latitude;
+    }
+
+    public Double getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(Double longitude) {
+        this.longitude = longitude;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public String getFolderDate() {
+        return folderDate;
+    }
+
+    public void setFolderDate(String folderDate) {
+        this.folderDate = folderDate;
+    }
+
+    public String getExtension() {
+        return extension;
+    }
+
+    public void setExtension(String extension) {
+        this.extension = extension;
+    }
 }

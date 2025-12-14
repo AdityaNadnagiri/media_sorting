@@ -21,16 +21,16 @@ import java.security.NoSuchAlgorithmException;
 public class MediaFileService {
 
     private static final Logger logger = LoggerFactory.getLogger(MediaFileService.class);
-    
+
     private ProgressTracker mediaErrorTracker;
 
-    @Autowired  
+    @Autowired
     private ProgressTrackerFactory progressTrackerFactory;
 
     public MediaFileService() {
         // mediaErrorTracker will be initialized through initializeTracker method
     }
-    
+
     private void initializeTracker() {
         if (progressTrackerFactory != null && mediaErrorTracker == null) {
             this.mediaErrorTracker = progressTrackerFactory.getMediaErrorTracker();
@@ -90,12 +90,27 @@ public class MediaFileService {
     }
 
     /**
-     * Moves a file to a new location.
-     *
+     * Moves a file to the destination folder with smart renaming.
+     * 
      * @param fileData          The data of the file to move.
      * @param destinationFolder The folder to move the file to.
      */
     public void executeMove(ExifData fileData, File destinationFolder) {
+        executeMove(fileData, destinationFolder, false);
+    }
+
+    /**
+     * Moves a file to the destination folder with smart renaming based on whether
+     * it's a duplicate.
+     * - Originals: Get clean names (remove any _1, _2 suffixes)
+     * - Duplicates: Get numbered suffixes (_1, _2, etc.)
+     * 
+     * @param fileData          The data of the file to move.
+     * @param destinationFolder The folder to move the file to.
+     * @param isDuplicate       Whether this file is a duplicate (true) or original
+     *                          (false).
+     */
+    public void executeMove(ExifData fileData, File destinationFolder, boolean isDuplicate) {
         Path destinationPath;
         String deviceModel = fileData.getDeviceModel();
 
@@ -104,12 +119,65 @@ public class MediaFileService {
         } else {
             destinationFolder = new File(destinationFolder.getPath(), fileData.getExtension());
         }
-        
+
         File currentFile = fileData.getFile();
         try {
             if (createDirectory(destinationFolder)) {
-                destinationPath = destinationFolder.toPath().resolve(currentFile.getName());
-                destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
+                String fileName = currentFile.getName();
+
+                if (isDuplicate) {
+                    // For duplicates: Add numbered suffix if needed
+                    destinationPath = destinationFolder.toPath().resolve(fileName);
+                    destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
+                } else {
+                    // For originals: Remove any existing suffix and use clean name
+                    String cleanFileName = removeNumberedSuffix(fileName);
+                    destinationPath = destinationFolder.toPath().resolve(cleanFileName);
+
+                    // If clean name already exists, we need to resolve the conflict
+                    if (Files.exists(destinationPath)) {
+                        logger.info("Conflict detected: {} already exists in Original folder", cleanFileName);
+
+                        // Load the existing file's metadata to compare dates
+                        File existingFile = destinationPath.toFile();
+                        ExifData existingFileData = new ExifData(existingFile);
+
+                        // Compare dates to determine which is the true original
+                        boolean currentIsNewer = fileData.isAfter(existingFileData);
+
+                        if (currentIsNewer) {
+                            // Current file is NEWER - existing file is the true original
+                            // Current file should go to duplicates
+                            logger.info("Current file {} is newer, keeping existing {} as Original (older)",
+                                    currentFile.getName(), existingFile.getName());
+
+                            // Move current file to Duplicates
+                            File duplicateFolder = determineDuplicateFolder(fileData, destinationFolder);
+                            createDirectory(duplicateFolder); // Ensure directory exists
+                            destinationPath = duplicateFolder.toPath().resolve(cleanFileName);
+                            destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
+                        } else {
+                            // Current file is OLDER - it's the true original
+                            // Move existing file to Duplicates first
+                            logger.info("Current file {} is older (true original), moving existing {} to Duplicates",
+                                    currentFile.getName(), existingFile.getName());
+
+                            // Determine duplicate folder path
+                            File duplicateFolder = determineDuplicateFolder(fileData, destinationFolder);
+                            createDirectory(duplicateFolder); // Ensure directory exists
+                            Path duplicatePath = duplicateFolder.toPath().resolve(cleanFileName);
+                            duplicatePath = FileOperationUtils.findUniqueFileName(duplicatePath);
+
+                            // Move existing file to duplicates
+                            Files.move(existingFile.toPath(), duplicatePath);
+                            logger.info("Moved existing file to Duplicates: {}", duplicatePath);
+
+                            // Now current file can take the clean name in Original
+                            // destinationPath is already set to the clean name
+                        }
+                    }
+                }
+
                 Path path = Files.move(currentFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
                 fileData.setFile(path.toFile());
                 fileData.logFileDetails("Moved to " + destinationPath);
@@ -119,6 +187,43 @@ public class MediaFileService {
             logger.error("Failed to execute move for file: {}", currentFile.getAbsolutePath(), e);
             mediaErrorTracker.saveProgress("ExecuteMove processing File:: " + currentFile.toPath());
         }
+    }
+
+    /**
+     * Determines the appropriate duplicate folder based on file type and current
+     * destination.
+     */
+    private File determineDuplicateFolder(ExifData fileData, File originalFolder) {
+        // Extract the base path and replace "Original" with "Duplicate"
+        String originalPath = originalFolder.getAbsolutePath();
+        String duplicatePath = originalPath.replace("\\Original\\", "\\Duplicate\\")
+                .replace("/Original/", "/Duplicate/");
+        return new File(duplicatePath);
+    }
+
+    /**
+     * Removes numbered suffixes like _1, _2, _copy, etc. from filename.
+     * Examples:
+     * IMG_001_1.jpg -> IMG_001.jpg
+     * photo_2.png -> photo.png
+     * video_copy.mp4 -> video.mp4
+     */
+    private String removeNumberedSuffix(String fileName) {
+        int lastDot = fileName.lastIndexOf('.');
+        if (lastDot == -1) {
+            return fileName; // No extension
+        }
+
+        String nameWithoutExt = fileName.substring(0, lastDot);
+        String extension = fileName.substring(lastDot);
+
+        // Remove common suffixes: _1, _2, _copy, _duplicate, etc.
+        nameWithoutExt = nameWithoutExt.replaceAll("_\\d+$", ""); // Remove _1, _2, etc.
+        nameWithoutExt = nameWithoutExt.replaceAll("_copy$", ""); // Remove _copy
+        nameWithoutExt = nameWithoutExt.replaceAll("_duplicate$", ""); // Remove _duplicate
+        nameWithoutExt = nameWithoutExt.replaceAll("\\s*\\(\\d+\\)$", ""); // Remove (1), (2), etc.
+
+        return nameWithoutExt + extension;
     }
 
     /**

@@ -29,29 +29,29 @@ import java.util.*;
 
 @Service
 public class VideoExifDataService {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(VideoExifDataService.class);
-    
+
     private ProgressTracker videoErrorTracker;
     private ProgressTracker mp4ErrorTracker;
     private ProgressTracker tgpErrorTracker;
     private ProgressTracker qtErrorTracker;
     private ProgressTracker otherErrorTracker;
-    
+
     private static final String[] POSSIBLE_CREATION_DATE_KEYS = {
-        "xmpDM:creationDate", // XMPDM schema
-        "meta:creation-date", // General metadata
-        "Creation-Date",
-        "dcterms:created"
+            "xmpDM:creationDate", // XMPDM schema
+            "meta:creation-date", // General metadata
+            "Creation-Date",
+            "dcterms:created"
     };
 
     @Autowired
     private ProgressTrackerFactory progressTrackerFactory;
-    
+
     public VideoExifDataService() {
         // Trackers will be initialized through initializeTrackers method
     }
-    
+
     private void initializeTrackers() {
         if (progressTrackerFactory != null) {
             this.videoErrorTracker = progressTrackerFactory.getVideoErrorTracker();
@@ -63,6 +63,11 @@ public class VideoExifDataService {
     }
 
     public void processVideoFile(ExifData exifData) throws IOException {
+        // Initialize trackers if not already done
+        if (videoErrorTracker == null) {
+            initializeTrackers();
+        }
+
         File file = exifData.getFile();
         String extension = exifData.getExtension().toLowerCase();
 
@@ -81,11 +86,11 @@ public class VideoExifDataService {
             if ("3gp".equals(extension) || exifData.getDateTaken() == null) {
                 extract3gpMetadata(exifData);
             }
-            if (Arrays.asList("avi", "mkv", "dat", "wlmp", "mpg", "wmv").contains(extension) || 
-                exifData.getDateTaken() == null) {
+            if (Arrays.asList("avi", "mkv", "dat", "wlmp", "mpg", "wmv").contains(extension) ||
+                    exifData.getDateTaken() == null) {
                 extractOtherVideoMetadata(exifData);
             }
-            
+
             if (exifData.getDateTaken() == null) {
                 logger.warn("No creation date found for video file: {}", file.getAbsolutePath());
                 videoErrorTracker.saveProgress("No Date processVideoFile file: " + file);
@@ -103,7 +108,7 @@ public class VideoExifDataService {
             AutoDetectParser parser = new AutoDetectParser();
             ParseContext parseContext = new ParseContext();
             parser.parse(input, handler, metadata, parseContext);
-            
+
             for (String key : POSSIBLE_CREATION_DATE_KEYS) {
                 String creationDate = metadata.get(key);
                 if (creationDate != null) {
@@ -112,7 +117,7 @@ public class VideoExifDataService {
                     break;
                 }
             }
-            
+
             if (exifData.getDateTaken() == null) {
                 otherErrorTracker.saveProgress("No Date extractOtherVideoMetadata file: " + file);
             }
@@ -127,11 +132,11 @@ public class VideoExifDataService {
         try {
             Metadata drewMetadata = ImageMetadataReader.readMetadata(file);
             QuickTimeDirectory directory = drewMetadata.getFirstDirectoryOfType(QuickTimeDirectory.class);
-            
+
             if (directory != null) {
                 exifData.setDateTaken(directory.getDate(QuickTimeDirectory.TAG_CREATION_TIME));
             }
-            
+
             if (exifData.getDateTaken() == null) {
                 qtErrorTracker.saveProgress("No Date extractQuickTimeMetadata file: " + file);
             }
@@ -145,13 +150,13 @@ public class VideoExifDataService {
         File file = exifData.getFile();
         try (InputStream input = new FileInputStream(file)) {
             Metadata drewMetadata = ImageMetadataReader.readMetadata(file);
-            
+
             for (Directory directory : drewMetadata.getDirectories()) {
                 if ("MP4".equals(directory.getName())) {
                     for (Tag tag : directory.getTags()) {
                         if ("Creation Time".equals(tag.getTagName())) {
                             DateTimeFormatter formatter = DateTimeFormatter
-                                .ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ENGLISH);
+                                    .ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ENGLISH);
                             ZonedDateTime dateTime = ZonedDateTime.parse(tag.getDescription(), formatter);
                             exifData.setDateTaken(Date.from(dateTime.toInstant()));
                             break;
@@ -162,7 +167,7 @@ public class VideoExifDataService {
                     break;
                 }
             }
-            
+
             if (exifData.getDateTaken() == null) {
                 mp4ErrorTracker.saveProgress("No Date extractMp4Metadata file: " + file);
             }
@@ -180,7 +185,7 @@ public class VideoExifDataService {
             MP4Parser parser = new MP4Parser();
             ParseContext parseCtx = new ParseContext();
             parser.parse(input, handler, tikaMetadata, parseCtx);
-            
+
             for (String key : POSSIBLE_CREATION_DATE_KEYS) {
                 String creationDate = tikaMetadata.get(key);
                 if (creationDate != null) {
@@ -189,7 +194,7 @@ public class VideoExifDataService {
                     break;
                 }
             }
-            
+
             if (exifData.getDateTaken() == null) {
                 tgpErrorTracker.saveProgress("No Date extract3gpMetadata file: " + file);
             }
