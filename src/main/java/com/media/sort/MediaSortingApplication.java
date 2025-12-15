@@ -1,5 +1,6 @@
 package com.media.sort;
 
+import com.media.sort.config.LogDirectoryInitializer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -9,6 +10,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 public class MediaSortingApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(MediaSortingApplication.class, args);
+        SpringApplication app = new SpringApplication(MediaSortingApplication.class);
+        app.addInitializers(new LogDirectoryInitializer());
+        app.run(args);
     }
 }

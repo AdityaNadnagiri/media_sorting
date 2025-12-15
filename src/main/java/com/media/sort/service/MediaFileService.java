@@ -212,11 +212,14 @@ public class MediaFileService {
     }
 
     /**
-     * Removes numbered suffixes like _1, _2, _copy, etc. from filename.
+     * Removes numbered suffixes and OS duplicate patterns from filename.
+     * Used when moving files to Original folder to give them clean names.
      * Examples:
      * IMG_001_1.jpg -> IMG_001.jpg
      * photo_2.png -> photo.png
-     * video_copy.mp4 -> video.mp4
+     * ADLZ2152 - Copy.JPG -> ADLZ2152.JPG
+     * AFBO7949 - Copy (2).JPG -> AFBO7949.JPG
+     * Photo (1).jpg -> Photo.jpg
      */
     private String removeNumberedSuffix(String fileName) {
         int lastDot = fileName.lastIndexOf('.');
@@ -227,11 +230,34 @@ public class MediaFileService {
         String nameWithoutExt = fileName.substring(0, lastDot);
         String extension = fileName.substring(lastDot);
 
-        // Remove common suffixes: _1, _2, _copy, _duplicate, etc.
-        nameWithoutExt = nameWithoutExt.replaceAll("_\\d{1,2}$", ""); // Remove _1 to _99 only (not _9515!)
-        nameWithoutExt = nameWithoutExt.replaceAll("_copy$", ""); // Remove _copy
-        nameWithoutExt = nameWithoutExt.replaceAll("_duplicate$", ""); // Remove _duplicate
-        nameWithoutExt = nameWithoutExt.replaceAll("\\s*\\(\\d+\\)$", ""); // Remove (1), (2), etc.
+        // Remove OS duplicate patterns (from hasOSDuplicatePattern logic)
+        // Pattern: " - Copy (2)", " - Copy (123)", etc.
+        nameWithoutExt = nameWithoutExt.replaceAll("\\s*-\\s*[Cc]opy\\s*\\(\\d+\\)$", "");
+
+        // Pattern: " - Copy"
+        nameWithoutExt = nameWithoutExt.replaceAll("\\s*-\\s*[Cc]opy$", "");
+
+        // Pattern: " copy 1", " copy 2", etc.
+        nameWithoutExt = nameWithoutExt.replaceAll("\\s+[Cc]opy\\s+\\d+$", "");
+
+        // Pattern: "copy1", "copy2", etc. (no space)
+        nameWithoutExt = nameWithoutExt.replaceAll("[Cc]opy\\d+$", "");
+
+        // Pattern: "_copy_1", "_copy_2", etc.
+        nameWithoutExt = nameWithoutExt.replaceAll("_[Cc]opy_\\d+$", "");
+
+        // Pattern: "1copy1", "2copy2", etc.
+        nameWithoutExt = nameWithoutExt.replaceAll("\\d+[Cc]opy\\d+$", "");
+
+        // Pattern: " (1)", " (2)", "(123)", etc. - numbering suffix
+        nameWithoutExt = nameWithoutExt.replaceAll("\\s*\\(\\d+\\)$", "");
+
+        // Remove common numbered suffixes: _1, _2, etc. (only _1 to _99, not _9515!)
+        nameWithoutExt = nameWithoutExt.replaceAll("_\\d{1,2}$", "");
+
+        // Remove _copy, _duplicate suffixes (case insensitive)
+        nameWithoutExt = nameWithoutExt.replaceAll("_[Cc]opy$", "");
+        nameWithoutExt = nameWithoutExt.replaceAll("_[Dd]uplicate$", "");
 
         return nameWithoutExt + extension;
     }

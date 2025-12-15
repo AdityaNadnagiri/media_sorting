@@ -8,6 +8,7 @@ import com.drew.metadata.Metadata;
 import com.drew.metadata.Tag;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.exif.GpsDirectory;
+import com.media.sort.service.FileTypeRegistry;
 import com.media.sort.service.ProgressTracker;
 import com.media.sort.service.VideoExifDataService;
 
@@ -30,16 +31,6 @@ public class ExifData {
 
     private static final Logger logger = LoggerFactory.getLogger(ExifData.class);
 
-    // Static extension sets for file type detection (no dependency injection
-    // needed)
-    private static final Set<String> IMAGE_EXTENSIONS = new HashSet<>(Arrays.asList(
-            "arw", "jpg", "jpeg", "gif", "bmp", "ico", "tif", "tiff", "raw", "indd",
-            "ai", "eps", "pdf", "heic", "cr2", "nrw", "k25", "png", "webp"));
-
-    private static final Set<String> VIDEO_EXTENSIONS = new HashSet<>(Arrays.asList(
-            "mp4", "mkv", "flv", "avi", "mov", "wmv", "rm", "mpg", "mpeg",
-            "3gp", "vob", "m4v", "3g2", "divx", "xvid", "webm"));
-
     private ProgressTracker imageErrorTracker;
     private ProgressTracker compressionTracker;
     private ProgressTracker fileTracker;
@@ -61,6 +52,12 @@ public class ExifData {
     private String type;
     private String folderDate;
     private String extension;
+
+    // Perceptual duplicate detection
+    private String perceptualHash; // pHash for images
+    private Integer imageWidth; // For quality comparison
+    private Integer imageHeight;
+    private Long fileSize; // File size in bytes
 
     // Default constructor - trackers will be initialized via ProgressTrackerFactory
     public ExifData() {
@@ -97,6 +94,7 @@ public class ExifData {
     public void processFile(File file) {
         try {
             this.file = file;
+            this.fileSize = file.length(); // Capture file size for quality comparison
             setImageExifDataType();
 
             if (isImage()) {
@@ -262,10 +260,11 @@ public class ExifData {
         int dotIndex = fileName.lastIndexOf('.');
         extension = (dotIndex == -1) ? "" : fileName.substring(dotIndex + 1).toLowerCase();
 
-        // Use static extension sets for reliable file type detection
-        if (IMAGE_EXTENSIONS.contains(extension)) {
+        // Use FileTypeRegistry static sets which read from application.properties (via
+        // MediaSortingProperties)
+        if (FileTypeRegistry.IMAGE_EXTENSIONS.contains(extension)) {
             type = "image";
-        } else if (VIDEO_EXTENSIONS.contains(extension)) {
+        } else if (FileTypeRegistry.VIDEO_EXTENSIONS.contains(extension)) {
             type = "video";
         } else {
             type = "other";
@@ -380,5 +379,152 @@ public class ExifData {
 
     public void setExtension(String extension) {
         this.extension = extension;
+    }
+
+    // Perceptual hash and quality getters/setters
+    public String getPerceptualHash() {
+        return perceptualHash;
+    }
+
+    public void setPerceptualHash(String perceptualHash) {
+        this.perceptualHash = perceptualHash;
+    }
+
+    public Integer getImageWidth() {
+        return imageWidth;
+    }
+
+    public void setImageWidth(Integer imageWidth) {
+        this.imageWidth = imageWidth;
+    }
+
+    public Integer getImageHeight() {
+        return imageHeight;
+    }
+
+    public void setImageHeight(Integer imageHeight) {
+        this.imageHeight = imageHeight;
+    }
+
+    public Long getFileSize() {
+        return fileSize;
+    }
+
+    public void setFileSize(Long fileSize) {
+        this.fileSize = fileSize;
+    }
+
+    /**
+     * Calculate quality score for comparison
+     * Higher score = better quality
+     */
+    public int getQualityScore() {
+        if (imageWidth != null && imageHeight != null) {
+            // For images: resolution (total pixels)
+            return imageWidth * imageHeight;
+        } else if (fileSize != null) {
+            // Fallback: file size
+            return fileSize.intValue();
+        }
+        return 0;
+    }
+
+    /**
+     * Check if this file is better quality than another
+     * Priority order:
+     * 1. No OS-generated duplicate patterns = better (e.g., no "(1)", " - Copy
+     * (2)")
+     * 2. Older date = better (true original by capture time)
+     * 3. Higher resolution = better (if dates are equal/unknown)
+     * 4. Larger file size = better (last resort)
+     */
+    public boolean isBetterQualityThan(ExifData other) {
+        if (other == null) {
+            logger.info("[QUALITY] {} is better (other is null)", this.file.getName());
+            return true;
+        }
+
+        logger.info("[QUALITY] Comparing {} vs {}", this.file.getName(), other.file.getName());
+
+        // Priority 0: OS-generated duplicate pattern detection
+        // Very specific patterns that operating systems use for duplicates
+        boolean thisHasCopyPattern = hasOSDuplicatePattern(this.file.getName());
+        boolean otherHasCopyPattern = hasOSDuplicatePattern(other.file.getName());
+
+        logger.info("[QUALITY]   Pattern check: {} hasCopy={}, {} hasCopy={}",
+                this.file.getName(), thisHasCopyPattern,
+                other.file.getName(), otherHasCopyPattern);
+
+        if (thisHasCopyPattern && !otherHasCopyPattern) {
+            logger.info("[QUALITY]   Result: {} is WORSE (has copy pattern)", this.file.getName());
+            return false; // This has copy pattern, other is clean = other is better
+        } else if (!thisHasCopyPattern && otherHasCopyPattern) {
+            logger.info("[QUALITY]   Result: {} is BETTER (other has copy pattern)", this.file.getName());
+            return true; // This is clean, other has copy pattern = this is better
+        }
+        // If both have patterns or both are clean, continue to date comparison
+
+        // Priority 1: Date comparison (older is better - it's the true original)
+        Date thisDate = this.dateTaken != null ? this.dateTaken
+                : (this.dateCreated != null ? this.dateCreated : this.dateModified);
+        Date otherDate = other.dateTaken != null ? other.dateTaken
+                : (other.dateCreated != null ? other.dateCreated : other.dateModified);
+
+        logger.info("[QUALITY]   Date check: {} date={}, {} date={}",
+                this.file.getName(), thisDate,
+                other.file.getName(), otherDate);
+
+        if (thisDate != null && otherDate != null) {
+            // If this file is OLDER (before other), it's the better original
+            if (thisDate.before(otherDate)) {
+                logger.info("[QUALITY]   Result: {} is BETTER (older date)", this.file.getName());
+                return true; // This is older = better (true original)
+            } else if (thisDate.after(otherDate)) {
+                logger.info("[QUALITY]   Result: {} is WORSE (newer date)", this.file.getName());
+                return false; // This is newer = worse (likely a copy/edit)
+            }
+            logger.info("[QUALITY]   Dates are equal, checking resolution...");
+            // If dates are equal, fall through to resolution comparison
+        }
+
+        // Priority 2: Resolution comparison (for perceptual duplicates with
+        // same/unknown dates)
+        int thisQuality = this.getQualityScore();
+        int otherQuality = other.getQualityScore();
+
+        logger.info("[QUALITY]   Quality scores: {} = {}px ({}x{}), {} = {}px ({}x{})",
+                this.file.getName(), thisQuality, this.imageWidth, this.imageHeight,
+                other.file.getName(), otherQuality, other.imageWidth, other.imageHeight);
+
+        boolean result = thisQuality > otherQuality;
+        logger.info("[QUALITY]   Result: {} is {} (by resolution)",
+                this.file.getName(), result ? "BETTER" : "WORSE");
+
+        return result;
+    }
+
+    /**
+     * Check if filename contains OS-generated duplicate patterns
+     * Matches very specific patterns like: (1), (2), - Copy, copy1, etc.
+     */
+    private boolean hasOSDuplicatePattern(String filename) {
+        if (filename == null) {
+            return false;
+        }
+
+        // Match patterns like: "(1)", "(2)", " (1)", " (2)", etc.
+        if (filename.matches(".*\\s*\\(\\d+\\).*")) {
+            return true;
+        }
+
+        String lower = filename.toLowerCase();
+
+        // Windows/Mac copy patterns
+        return lower.contains(" - copy") || // "Photo - Copy.jpg"
+                lower.contains("- copy (") || // "Photo - Copy (2).jpg"
+                lower.contains(" copy ") || // "Photo copy 1.jpg"
+                lower.matches(".*copy\\d+.*") || // "Photocopy1.jpg"
+                lower.matches(".*copy_\\d+.*") || // "Photo_copy_1.jpg"
+                lower.matches(".*\\dcopy\\d.*"); // "Photo1copy1.jpg"
     }
 }

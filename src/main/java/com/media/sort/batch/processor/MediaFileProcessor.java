@@ -4,12 +4,15 @@ import com.media.sort.batch.dto.MediaFileDTO;
 import com.media.sort.model.ExifData;
 
 import com.media.sort.service.MediaFileService;
+import com.media.sort.service.PerceptualHashService;
 import com.media.sort.service.ProgressTrackerFactory;
 import com.media.sort.service.VideoExifDataService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.item.ItemProcessor;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.File;
 
 /**
@@ -23,13 +26,16 @@ public class MediaFileProcessor implements ItemProcessor<File, MediaFileDTO> {
     private final MediaFileService mediaFileService;
     private final ProgressTrackerFactory progressTrackerFactory;
     private final VideoExifDataService videoExifDataService;
+    private final PerceptualHashService perceptualHashService;
 
     public MediaFileProcessor(MediaFileService mediaFileService,
             ProgressTrackerFactory progressTrackerFactory,
-            VideoExifDataService videoExifDataService) {
+            VideoExifDataService videoExifDataService,
+            PerceptualHashService perceptualHashService) {
         this.mediaFileService = mediaFileService;
         this.progressTrackerFactory = progressTrackerFactory;
         this.videoExifDataService = videoExifDataService;
+        this.perceptualHashService = perceptualHashService;
     }
 
     @Override
@@ -57,6 +63,24 @@ public class MediaFileProcessor implements ItemProcessor<File, MediaFileDTO> {
 
             // Calculate file hash for duplicate detection
             String fileHash = mediaFileService.calculateHash(file.toPath());
+
+            // For images: Compute perceptual hash and extract dimensions
+            if (exifData.isImage()) {
+                try {
+                    // Compute perceptual hash
+                    String pHash = perceptualHashService.computeHash(file);
+                    exifData.setPerceptualHash(pHash);
+
+                    // Extract image dimensions
+                    BufferedImage img = ImageIO.read(file);
+                    if (img != null) {
+                        exifData.setImageWidth(img.getWidth());
+                        exifData.setImageHeight(img.getHeight());
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to compute perceptual hash/dimensions for: {}", file.getName(), e);
+                }
+            }
 
             // Determine media type
             MediaFileDTO.MediaType mediaType = exifData.isImage() ? MediaFileDTO.MediaType.IMAGE

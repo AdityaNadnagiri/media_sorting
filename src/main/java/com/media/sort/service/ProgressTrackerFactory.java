@@ -33,15 +33,20 @@ public class ProgressTrackerFactory {
             String baseLogsDir = properties.getRootLogsFolder() != null ? properties.getRootLogsFolder() : "logs";
             runLogDirectory = baseLogsDir + "/run_" + timestamp;
 
+            // Set system property for Logback to use
+            System.setProperty("LOG_DIR", runLogDirectory);
+
             // Create the directory
             try {
                 Path runLogPath = Paths.get(runLogDirectory);
                 Files.createDirectories(runLogPath);
                 System.out.println("Created unique log directory for this run: " + runLogDirectory);
+                System.out.println("Console output will be saved to: " + runLogDirectory + "/console.log");
             } catch (Exception e) {
                 System.err.println("Failed to create run log directory: " + e.getMessage());
                 // Fallback to base logs directory
                 runLogDirectory = baseLogsDir;
+                System.setProperty("LOG_DIR", runLogDirectory);
             }
         }
         return runLogDirectory;

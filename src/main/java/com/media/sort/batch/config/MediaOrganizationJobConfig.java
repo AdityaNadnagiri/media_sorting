@@ -8,6 +8,7 @@ import com.media.sort.batch.writer.MediaFileWriter;
 import com.media.sort.model.ExifData;
 
 import com.media.sort.service.MediaFileService;
+import com.media.sort.service.PerceptualHashService;
 import com.media.sort.service.ProgressTrackerFactory;
 import com.media.sort.service.VideoExifDataService;
 import org.springframework.batch.core.Job;
@@ -96,9 +97,11 @@ public class MediaOrganizationJobConfig {
      */
     @Bean
     @StepScope
-    public MediaFileProcessor mediaFileProcessor(VideoExifDataService videoExifDataService) {
+    public MediaFileProcessor mediaFileProcessor(VideoExifDataService videoExifDataService,
+            ProgressTrackerFactory progressTrackerFactory,
+            PerceptualHashService perceptualHashService) {
         return new MediaFileProcessor(mediaFileService, progressTrackerFactory,
-                videoExifDataService);
+                videoExifDataService, perceptualHashService);
     }
 
     /**
@@ -107,8 +110,9 @@ public class MediaOrganizationJobConfig {
     @Bean
     @StepScope
     public MediaFileWriter mediaFileWriter(@Value("#{jobParameters['sourceFolder']}") String sourceFolder,
-            Map<String, ExifData> mediaFileHashMap) {
+            Map<String, ExifData> mediaFileHashMap,
+            PerceptualHashService perceptualHashService) {
         String folder = sourceFolder != null ? sourceFolder : properties.getSourceFolder();
-        return new MediaFileWriter(mediaFileService, properties, folder, mediaFileHashMap);
+        return new MediaFileWriter(mediaFileService, properties, folder, mediaFileHashMap, perceptualHashService);
     }
 }

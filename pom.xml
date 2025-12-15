@@ -77,11 +77,13 @@
         </dependency>
         
         <!-- JImageHash for perceptual hashing (detect visually similar images) -->
+        <!-- TEMPORARILY DISABLED - Will implement after current fixes are tested
         <dependency>
             <groupId>com.github.kilianB</groupId>
             <artifactId>JImageHash</artifactId>
             <version>3.0.0</version>
         </dependency>
+        -->
         
         <!-- Testing -->
         <dependency>
