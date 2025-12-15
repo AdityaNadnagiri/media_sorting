@@ -275,7 +275,6 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
             // Only add to map if move succeeded
             if (fileData.getFile().exists()) {
                 fileHashMap.put(fileHash, fileData);
-                logger.info("Moved original file: {} to {}", fileData.getFile().getName(), folderDate);
             } else {
                 logger.error("Failed to move original file, not adding to map: {}", fileData.getFile().getName());
             }
