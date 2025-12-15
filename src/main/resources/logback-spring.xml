@@ -19,14 +19,6 @@
         </encoder>
     </appender>
     
-    <!-- File appender for detailed debug log -->
-    <appender name="DEBUG_FILE" class="ch.qos.logback.core.FileAppender">
-        <file>${LOG_DIR}/debug.log</file>
-        <append>false</append>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
     
     <!-- Comprehensive application log - combines console and debug output -->
     <appender name="APPLICATION_LOG" class="ch.qos.logback.core.FileAppender">
@@ -41,7 +33,6 @@
     <root level="INFO">
         <appender-ref ref="CONSOLE" />
         <appender-ref ref="FILE" />
-        <appender-ref ref="DEBUG_FILE" />
         <appender-ref ref="APPLICATION_LOG" />
     </root>
     
@@ -49,7 +40,6 @@
     <logger name="com.media.sort" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE" />
         <appender-ref ref="FILE" />
-        <appender-ref ref="DEBUG_FILE" />
         <appender-ref ref="APPLICATION_LOG" />
     </logger>
     
@@ -57,7 +47,6 @@
     <logger name="org.springframework" level="WARN" additivity="false">
         <appender-ref ref="CONSOLE" />
         <appender-ref ref="FILE" />
-        <appender-ref ref="DEBUG_FILE" />
         <appender-ref ref="APPLICATION_LOG" />
     </logger>
     
@@ -65,7 +54,6 @@
     <logger name="org.springframework.batch" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE" />
         <appender-ref ref="FILE" />
-        <appender-ref ref="DEBUG_FILE" />
         <appender-ref ref="APPLICATION_LOG" />
     </logger>
 </configuration>
