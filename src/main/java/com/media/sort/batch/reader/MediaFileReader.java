@@ -69,19 +69,44 @@ public class MediaFileReader implements ItemReader<File> {
                     mediaFiles.add(file);
                 }
             } else if (file.isDirectory()) {
-                // Only skip output directories if they are direct children of the source folder
-                String dirName = file.getName();
-                File sourceDir = new File(sourceFolder);
-                boolean isDirectChildOfSource = file.getParentFile().equals(sourceDir);
-                boolean isOutputDirectory = dirName.equals("Images") || dirName.equals("Videos") ||
-                        dirName.equals("EmptyFolder") || dirName.equals("others");
-
-                // Skip only if it's an output directory AND a direct child of source folder
-                if (!(isDirectChildOfSource && isOutputDirectory)) {
-                    scanDirectory(file);
+                // Skip if this directory or any parent is an output directory
+                if (isInsideOutputDirectory(file)) {
+                    logger.debug("Skipping directory inside output folder: {}", file.getAbsolutePath());
+                    continue; // Don't process anything inside output directories
                 }
+
+                // Recursively scan other directories
+                scanDirectory(file);
             }
         }
+    }
+
+    /**
+     * Check if a directory is inside any output directory (Images, Videos, others,
+     * EmptyFolder)
+     */
+    private boolean isInsideOutputDirectory(File directory) {
+        File current = directory;
+        File sourceDir = new File(sourceFolder);
+
+        while (current != null && !current.equals(sourceDir)) {
+            String dirName = current.getName();
+
+            // Check if this is an output directory
+            if (dirName.equals("Images") || dirName.equals("Videos") ||
+                    dirName.equals("EmptyFolder") || dirName.equals("others")) {
+
+                // Verify it's actually under the source folder
+                File parent = current.getParentFile();
+                if (parent != null && parent.equals(sourceDir)) {
+                    return true; // This directory is inside an output folder
+                }
+            }
+
+            current = current.getParentFile();
+        }
+
+        return false;
     }
 
     /**

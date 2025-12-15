@@ -96,7 +96,7 @@ public class MediaFileService {
      * @param destinationFolder The folder to move the file to.
      */
     public void executeMove(ExifData fileData, File destinationFolder) {
-        executeMove(fileData, destinationFolder, false);
+        executeMove(fileData, destinationFolder, false, false);
     }
 
     /**
@@ -109,8 +109,10 @@ public class MediaFileService {
      * @param destinationFolder The folder to move the file to.
      * @param isDuplicate       Whether this file is a duplicate (true) or original
      *                          (false).
+     * @param cleanName         Whether to remove numbered suffixes from filename
+     *                          (only applies to originals)
      */
-    public void executeMove(ExifData fileData, File destinationFolder, boolean isDuplicate) {
+    public void executeMove(ExifData fileData, File destinationFolder, boolean isDuplicate, boolean cleanName) {
         Path destinationPath;
         String deviceModel = fileData.getDeviceModel();
 
@@ -124,18 +126,26 @@ public class MediaFileService {
         try {
             if (createDirectory(destinationFolder)) {
                 String fileName = currentFile.getName();
+                String cleanFileName = fileName; // Default to original name
 
                 if (isDuplicate) {
                     // For duplicates: Add numbered suffix if needed
                     destinationPath = destinationFolder.toPath().resolve(fileName);
                     destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
                 } else {
-                    // For originals: Remove any existing suffix and use clean name
-                    String cleanFileName = removeNumberedSuffix(fileName);
-                    destinationPath = destinationFolder.toPath().resolve(cleanFileName);
+                    // For originals: Remove suffix ONLY if cleanName is true
+                    if (cleanName) {
+                        cleanFileName = removeNumberedSuffix(fileName);
+                        destinationPath = destinationFolder.toPath().resolve(cleanFileName);
+                    } else {
+                        // Preserve original filename for unique files
+                        destinationPath = destinationFolder.toPath().resolve(fileName);
+                        // Ensure uniqueness without changing the name
+                        destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
+                    }
 
                     // If clean name already exists, we need to resolve the conflict
-                    if (Files.exists(destinationPath)) {
+                    if (cleanName && Files.exists(destinationPath)) {
                         logger.info("Conflict detected: {} already exists in Original folder", cleanFileName);
 
                         // Load the existing file's metadata to compare dates
@@ -218,7 +228,7 @@ public class MediaFileService {
         String extension = fileName.substring(lastDot);
 
         // Remove common suffixes: _1, _2, _copy, _duplicate, etc.
-        nameWithoutExt = nameWithoutExt.replaceAll("_\\d+$", ""); // Remove _1, _2, etc.
+        nameWithoutExt = nameWithoutExt.replaceAll("_\\d{1,2}$", ""); // Remove _1 to _99 only (not _9515!)
         nameWithoutExt = nameWithoutExt.replaceAll("_copy$", ""); // Remove _copy
         nameWithoutExt = nameWithoutExt.replaceAll("_duplicate$", ""); // Remove _duplicate
         nameWithoutExt = nameWithoutExt.replaceAll("\\s*\\(\\d+\\)$", ""); // Remove (1), (2), etc.

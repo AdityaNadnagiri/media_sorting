@@ -100,16 +100,17 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
             if (isImage) {
                 if (isAfter) {
                     // Current file is NEWER - it's a duplicate, keep older one as original
-                    mediaFileService.executeMove(fileData, new File(duplicateImageDirectory, folderDate), true);
+                    mediaFileService.executeMove(fileData, new File(duplicateImageDirectory, folderDate), true, false);
                     logger.info("Moved newer duplicate: {} to Duplicates, kept older original: {}",
                             fileData.getFile().getName(), originalFileData.getFile().getName());
                 } else {
                     // Current file is OLDER - it's the true original, move newer one to duplicates
                     // 1. Move the existing (newer) original to duplicates
-                    mediaFileService.executeMove(originalFileData, new File(duplicateImageDirectory, folderDate), true);
+                    mediaFileService.executeMove(originalFileData, new File(duplicateImageDirectory, folderDate), true,
+                            false);
 
                     // 2. Move the current (older) file to originals
-                    mediaFileService.executeMove(fileData, new File(originalImageDirectory, folderDate), false);
+                    mediaFileService.executeMove(fileData, new File(originalImageDirectory, folderDate), false, true);
 
                     // 3. Update map ONLY after successful moves
                     if (fileData.getFile().exists()) { // Verify move succeeded
@@ -122,16 +123,17 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
             } else {
                 if (isAfter) {
                     // Current file is NEWER - it's a duplicate, keep older one as original
-                    mediaFileService.executeMove(fileData, new File(duplicateVideoDirectory, folderDate), true);
+                    mediaFileService.executeMove(fileData, new File(duplicateVideoDirectory, folderDate), true, false);
                     logger.info("Moved newer duplicate: {} to Duplicates, kept older original: {}",
                             fileData.getFile().getName(), originalFileData.getFile().getName());
                 } else {
                     // Current file is OLDER - it's the true original, move newer one to duplicates
                     // 1. Move the existing (newer) original to duplicates
-                    mediaFileService.executeMove(originalFileData, new File(duplicateVideoDirectory, folderDate), true);
+                    mediaFileService.executeMove(originalFileData, new File(duplicateVideoDirectory, folderDate), true,
+                            false);
 
                     // 2. Move the current (older) file to originals
-                    mediaFileService.executeMove(fileData, new File(originalVideoDirectory, folderDate), false);
+                    mediaFileService.executeMove(fileData, new File(originalVideoDirectory, folderDate), false, true);
 
                     // 3. Update map ONLY after successful moves
                     if (fileData.getFile().exists()) {
@@ -143,11 +145,11 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
                 }
             }
         } else {
-            // First occurrence - original file
+            // First occurrence - original file (unique, no duplicate)
             if (isImage) {
-                mediaFileService.executeMove(fileData, new File(originalImageDirectory, folderDate), false);
+                mediaFileService.executeMove(fileData, new File(originalImageDirectory, folderDate), false, false);
             } else {
-                mediaFileService.executeMove(fileData, new File(originalVideoDirectory, folderDate), false);
+                mediaFileService.executeMove(fileData, new File(originalVideoDirectory, folderDate), false, false);
             }
 
             // Only add to map if move succeeded
