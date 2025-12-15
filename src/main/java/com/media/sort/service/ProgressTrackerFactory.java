@@ -4,11 +4,6 @@ import com.media.sort.MediaSortingProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -20,36 +15,12 @@ public class ProgressTrackerFactory {
 
     private final ConcurrentMap<String, ProgressTracker> trackers = new ConcurrentHashMap<>();
 
-    // Unique run directory for this execution
-    private String runLogDirectory;
-
     /**
-     * Initializes a unique log directory for this run
+     * Gets the log directory set by LogDirectoryInitializer
      */
     private synchronized String getRunLogDirectory() {
-        if (runLogDirectory == null) {
-            // Create unique directory name based on timestamp
-            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
-            String baseLogsDir = properties.getRootLogsFolder() != null ? properties.getRootLogsFolder() : "logs";
-            runLogDirectory = baseLogsDir + "/run_" + timestamp;
-
-            // Set system property for Logback to use
-            System.setProperty("LOG_DIR", runLogDirectory);
-
-            // Create the directory
-            try {
-                Path runLogPath = Paths.get(runLogDirectory);
-                Files.createDirectories(runLogPath);
-                System.out.println("Created unique log directory for this run: " + runLogDirectory);
-                System.out.println("Console output will be saved to: " + runLogDirectory + "/console.log");
-            } catch (Exception e) {
-                System.err.println("Failed to create run log directory: " + e.getMessage());
-                // Fallback to base logs directory
-                runLogDirectory = baseLogsDir;
-                System.setProperty("LOG_DIR", runLogDirectory);
-            }
-        }
-        return runLogDirectory;
+        // LOG_DIR is already set by LogDirectoryInitializer during app startup
+        return System.getProperty("LOG_DIR", "logs/run_default");
     }
 
     /**
