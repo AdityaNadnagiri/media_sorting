@@ -86,7 +86,9 @@ public class MediaFileService {
         for (byte hashByte : hashBytes) {
             hashBuilder.append(String.format("%02x", hashByte));
         }
-        return hashBuilder.toString();
+        String hash = hashBuilder.toString();
+        logger.info("Calculated hash for {}: {} (Size: {} bytes)", filePath, hash, Files.size(filePath));
+        return hash;
     }
 
     /**

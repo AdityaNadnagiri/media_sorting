@@ -152,12 +152,67 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
                 }
             }
         } else {
-            // No exact content match - check for perceptual duplicates (images only)
-            if (isImage && fileData.getPerceptualHash() != null) {
+            // No exact content match
+
+            // 1. Check for Filename Pattern Duplicates (e.g. "IMG_123 - low.jpg" vs
+            // "IMG_123.jpg")
+            // This catches explicit copies even if quality is different or hashes don't
+            // match
+            if (isImage) {
+                ExifData filenameDuplicate = findDuplicateByFilename(fileData);
+                if (filenameDuplicate != null) {
+                    logger.info("Description duplicate detected (filename pattern): {} is a copy of {}",
+                            fileData.getFile().getName(), filenameDuplicate.getFile().getName());
+
+                    // Treat as duplicate
+                    // Compare quality to decide which to keep (usually the one without "copy" in
+                    // name is strictly better naming-wise,
+                    // but we'll stick to quality score)
+                    if (fileData.isBetterQualityThan(filenameDuplicate)) {
+                        // Current is better
+                        logger.info("Current 'copy' file {} has better quality, swapping.",
+                                fileData.getFile().getName());
+                        mediaFileService.executeMove(filenameDuplicate,
+                                new File(duplicateImageDirectory, folderDate), true, false);
+                        mediaFileService.executeMove(fileData,
+                                new File(originalImageDirectory, folderDate), false, true);
+
+                        // Update map
+                        removeFromMap(filenameDuplicate); // Helper method needed or inline
+                        if (fileData.getFile().exists())
+                            fileHashMap.put(fileHash, fileData);
+
+                    } else {
+                        // Existing is better (expected for " - low")
+                        mediaFileService.executeMove(fileData,
+                                new File(duplicateImageDirectory, folderDate), true, false);
+                    }
+                    return;
+                }
+            }
+
+            // 2. Check for Perceptual Duplicates (images only)
+            // ONLY if feature is enabled
+            if (properties.isPerceptualHashEnabled() && isImage && fileData.getPerceptualHash() != null) {
                 ExifData perceptualDuplicate = findPerceptualDuplicate(fileData);
 
                 if (perceptualDuplicate != null) {
-                    // Found a visually similar image!
+                    // Found a visually similar image! Check for Burst Shot (Sequential Filenames)
+                    boolean isBurstShot = isBurstShot(fileData.getFile().getName(),
+                            perceptualDuplicate.getFile().getName());
+
+                    if (isBurstShot) {
+                        logger.info("Burst shot detected: {} and {} are sequential. Keeping both as unique.",
+                                fileData.getFile().getName(), perceptualDuplicate.getFile().getName());
+                        // Treat as unique original
+                        mediaFileService.executeMove(fileData, new File(originalImageDirectory, folderDate), false,
+                                true);
+                        if (fileData.getFile().exists()) {
+                            fileHashMap.put(fileHash, fileData);
+                        }
+                        return;
+                    }
+
                     logger.info("Perceptual duplicate detected: {} similar to {}",
                             fileData.getFile().getName(), perceptualDuplicate.getFile().getName());
 
@@ -276,4 +331,143 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
 
         return null;
     }
+
+    /**
+     * Checks if two filenames appear to be part of a burst sequence (sequential
+     * numbers).
+     * 
+     * @param name1 First filename (e.g. IMG_0146.JPG)
+     * @param name2 Second filename (e.g. IMG_0147.JPG)
+     * @return true if filenames are sequential
+     */
+    private boolean isBurstShot(String name1, String name2) {
+        try {
+            // Remove extensions
+            String base1 = name1.contains(".") ? name1.substring(0, name1.lastIndexOf('.')) : name1;
+            String base2 = name2.contains(".") ? name2.substring(0, name2.lastIndexOf('.')) : name2;
+
+            // Extract numeric suffix
+            // Current regex handles standard patterns like IMG_1234, DSC01234
+            String number1Str = base1.replaceAll("[^0-9]", "");
+            String number2Str = base2.replaceAll("[^0-9]", "");
+
+            if (number1Str.isEmpty() || number2Str.isEmpty()) {
+                return false;
+            }
+
+            // Check if prefixes match (e.g. IMG_ vs IMG_)
+            // Remove the numbers we found from the end
+            // Note: simple prefix check, assuming number is at the end
+            // If number is in the middle, this logic might be too strict, but safe for
+            // standard camera files
+
+            // To be safe against "IMG_123" vs "DSC_124", we verify the length of the
+            // numeric part
+            // relative to the string to guess the prefix
+
+            long num1 = Long.parseLong(number1Str);
+            long num2 = Long.parseLong(number2Str);
+
+            // Check if sequential (difference of 1)
+            long diff = Math.abs(num1 - num2);
+            boolean sequential = diff == 1;
+
+            if (sequential) {
+                logger.debug("Burst shot check: {} and {} -> Sequential? YES (diff={})", name1, name2, diff);
+            }
+
+            return sequential;
+
+        } catch (Exception e) {
+            logger.warn("Error checking for burst shot sequence: {} vs {}", name1, name2, e);
+            return false;
+        }
+    }
+
+    /**
+     * Helper to remove an entry from the map by value
+     */
+    private void removeFromMap(ExifData valueToRemove) {
+        String keyToRemove = null;
+        for (Map.Entry<String, ExifData> entry : fileHashMap.entrySet()) {
+            if (entry.getValue() == valueToRemove) {
+                keyToRemove = entry.getKey();
+                break;
+            }
+        }
+        if (keyToRemove != null) {
+            fileHashMap.remove(keyToRemove);
+        }
+    }
+
+    /**
+     * Search for a duplicate based on filename patterns (e.g. "Name - Copy" or
+     * "Name - low" vs "Name")
+     */
+    private ExifData findDuplicateByFilename(ExifData fileData) {
+        String currentName = fileData.getFile().getName();
+        // Simple optimization: only check if we have enough files
+        // Iterate:
+        for (ExifData existing : fileHashMap.values()) {
+            String existingName = existing.getFile().getName();
+
+            // Log potentially interesting pairs (optimization: only log if one contains the
+            // other)
+            if (currentName.contains(existingName.substring(0, Math.min(5, existingName.length()))) ||
+                    existingName.contains(currentName.substring(0, Math.min(5, currentName.length())))) {
+                // Too noisy? Just check for our specific target for now
+                if (currentName.startsWith("ADLZ") && existingName.startsWith("ADLZ")) {
+                    logger.info("Checking filename dup: '{}' vs '{}'", currentName, existingName);
+                }
+            }
+
+            // Check if current is a copy of existing
+            if (isCopyPattern(existingName, currentName)) {
+                logger.info("MATCH: '{}' is copy of '{}'", currentName, existingName);
+                return existing;
+            }
+            // Check if existing is a copy of current (though usually we process copies
+            // later)
+            if (isCopyPattern(currentName, existingName)) {
+                logger.info("MATCH: '{}' is copy of '{}'", existingName, currentName);
+                return existing;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Checks if name2 looks like a copy of name1
+     * e.g. name1="IMG.jpg", name2="IMG - low.jpg" -> true
+     */
+    private boolean isCopyPattern(String original, String candidate) {
+        try {
+            if (original.equalsIgnoreCase(candidate))
+                return false; // Same name isn't a copy pattern (handled by exact hash or file collision)
+
+            String baseOriginal = original.contains(".") ? original.substring(0, original.lastIndexOf('.')) : original;
+            String baseCandidate = candidate.contains(".") ? candidate.substring(0, candidate.lastIndexOf('.'))
+                    : candidate;
+
+            // Candidate must start with Original Base
+            if (!baseCandidate.toLowerCase().startsWith(baseOriginal.toLowerCase())) {
+                return false;
+            }
+
+            // Extract the suffix (part after the base)
+            String suffix = baseCandidate.substring(baseOriginal.length()).toLowerCase();
+
+            // Common copy patterns
+            // " - low", " - copy", " (1)", "_1", " copy 2"
+            return suffix.contains(" - low") ||
+                    suffix.contains(" copy") ||
+                    suffix.matches(".*\\(\\d+\\)$") || // (1)
+                    suffix.matches(".*_\\d+$") || // _1
+                    suffix.contains(" low"); // catch " low" generic
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
 }

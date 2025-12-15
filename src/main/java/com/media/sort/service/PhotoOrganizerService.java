@@ -137,6 +137,10 @@ public class PhotoOrganizerService {
             boolean isAfter = fileData.isAfter(originalFileData);
 
             if (isImage) {
+                logger.info("Duplicate image detected! Hash: {}. Current: {} ({}), Original: {} ({})",
+                        key, fileData.getFile().getName(), fileData.getFolderDate(),
+                        originalFileData.getFile().getName(), originalFileData.getFolderDate());
+
                 if (isAfter) {
                     mediaFileService.executeMove(fileData,
                             new File(duplicateImageDirectory, originalFileData.getFolderDate()));
@@ -146,6 +150,9 @@ public class PhotoOrganizerService {
                     fileHash.put(key, fileData);
                 }
             } else {
+                logger.info("Duplicate video detected! Hash: {}. Current: {} ({}), Original: {} ({})",
+                        key, fileData.getFile().getName(), fileData.getFolderDate(),
+                        originalFileData.getFile().getName(), originalFileData.getFolderDate());
                 if (isAfter) {
                     mediaFileService.executeMove(fileData,
                             new File(duplicateVideoDirectory, originalFileData.getFolderDate()));
