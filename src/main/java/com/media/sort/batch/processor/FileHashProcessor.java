@@ -55,10 +55,10 @@ public class FileHashProcessor implements ItemProcessor<File, FileHashDTO> {
                 if (exifData.isOther()) {
                     exifData = null;
                 } else {
-                    logger.debug("Extracted EXIF data for: {}", file.getName());
+                    logger.debug("Extracted EXIF data for: {}", file.getAbsolutePath());
                 }
             } catch (Exception e) {
-                logger.warn("Failed to extract EXIF data for: {}", file.getName(), e);
+                logger.warn("Failed to extract EXIF data for: {}", file.getAbsolutePath(), e);
                 // Continue without EXIF data
                 exifData = null;
             }

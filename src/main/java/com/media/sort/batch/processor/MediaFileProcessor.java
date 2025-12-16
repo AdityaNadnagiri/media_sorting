@@ -78,7 +78,7 @@ public class MediaFileProcessor implements ItemProcessor<File, MediaFileDTO> {
                         exifData.setImageHeight(img.getHeight());
                     }
                 } catch (Exception e) {
-                    logger.warn("Failed to compute perceptual hash/dimensions for: {}", file.getName(), e);
+                    logger.warn("Failed to compute perceptual hash/dimensions for: {}", file.getAbsolutePath(), e);
                 }
             }
 
@@ -94,7 +94,7 @@ public class MediaFileProcessor implements ItemProcessor<File, MediaFileDTO> {
             dto.setFileHash(fileHash);
             dto.setMediaType(mediaType);
 
-            logger.debug("Processed file: {} (hash: {})", file.getName(), fileHash);
+            logger.debug("Processed file: {} (hash: {})", file.getAbsolutePath(), fileHash);
             return dto;
 
         } catch (Exception e) {

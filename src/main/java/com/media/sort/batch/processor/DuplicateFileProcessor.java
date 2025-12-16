@@ -51,7 +51,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
                 FileHashDTO referenceDTO = referenceHashMap.get(hash);
 
                 logger.info("Duplicate found: {} matches {}",
-                        file.getName(), referenceDTO.getFilePath().getFileName());
+                        file.getAbsolutePath(), referenceDTO.getFilePath().toString());
 
                 // Extract EXIF data for current file if it's a media file
                 ExifData sourceExif = extractExifData(file);
@@ -101,7 +101,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
 
             return exifData;
         } catch (Exception e) {
-            logger.warn("Failed to extract EXIF data for: {}", file.getName(), e);
+            logger.warn("Failed to extract EXIF data for: {}", file.getAbsolutePath(), e);
         }
 
         return null;
@@ -122,7 +122,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
             // reference
             // and move reference to duplicates
             logger.info("Source file {} is higher quality than reference {}",
-                    sourceFile.getName(), referenceDTO.getFilePath().getFileName());
+                    sourceFile.getAbsolutePath(), referenceDTO.getFilePath().toString());
 
             // Determine target path: replace reference file location
             Path targetPath = referenceDTO.getFilePath();
@@ -141,7 +141,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
         } else {
             // Reference file is higher quality - move source to duplicates folder
             logger.info("Reference file {} is higher quality than source {}",
-                    referenceDTO.getFilePath().getFileName(), sourceFile.getName());
+                    referenceDTO.getFilePath().toString(), sourceFile.getAbsolutePath());
 
             // Determine duplicates folder path based on reference location
             Path referencePath = referenceDTO.getFilePath();

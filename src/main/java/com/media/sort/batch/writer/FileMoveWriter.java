@@ -63,12 +63,12 @@ public class FileMoveWriter implements ItemWriter<FileMoveDTO> {
                 // Move reference to duplicates
                 Files.move(referencePath, duplicatePath, StandardCopyOption.REPLACE_EXISTING);
                 logger.info("Moved lower quality file to duplicates: {} -> {}",
-                        referencePath.getFileName(), duplicatePath);
+                        referencePath.toString(), duplicatePath);
 
                 // Move source to replace reference location
                 Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
                 logger.info("Moved higher quality file to main folder: {} -> {}",
-                        sourcePath.getFileName(), targetPath);
+                        sourcePath.toString(), targetPath);
 
                 replacedCount.incrementAndGet();
                 movedCount.incrementAndGet();

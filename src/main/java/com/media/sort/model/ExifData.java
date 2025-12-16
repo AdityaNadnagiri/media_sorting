@@ -440,67 +440,145 @@ public class ExifData {
      */
     public boolean isBetterQualityThan(ExifData other) {
         if (other == null) {
-            logger.info("[QUALITY] {} is better (other is null)", this.file.getName());
+            logger.info("[QUALITY] {} is better (other is null)", this.file.getAbsolutePath());
             return true;
         }
 
-        logger.info("[QUALITY] Comparing {} vs {}", this.file.getName(), other.file.getName());
+        // Collect comparison data first
+        String file1Path = this.file.getAbsolutePath();
+        String file2Path = other.file.getAbsolutePath();
 
         // Priority 0: OS-generated duplicate pattern detection
-        // Very specific patterns that operating systems use for duplicates
         boolean thisHasCopyPattern = hasOSDuplicatePattern(this.file.getName());
         boolean otherHasCopyPattern = hasOSDuplicatePattern(other.file.getName());
 
-        logger.info("[QUALITY]   Pattern check: {} hasCopy={}, {} hasCopy={}",
-                this.file.getName(), thisHasCopyPattern,
-                other.file.getName(), otherHasCopyPattern);
-
-        if (thisHasCopyPattern && !otherHasCopyPattern) {
-            logger.info("[QUALITY]   Result: {} is WORSE (has copy pattern)", this.file.getName());
-            return false; // This has copy pattern, other is clean = other is better
-        } else if (!thisHasCopyPattern && otherHasCopyPattern) {
-            logger.info("[QUALITY]   Result: {} is BETTER (other has copy pattern)", this.file.getName());
-            return true; // This is clean, other has copy pattern = this is better
-        }
-        // If both have patterns or both are clean, continue to date comparison
-
-        // Priority 1: Date comparison (older is better - it's the true original)
+        // Priority 1: Date comparison
         Date thisDate = this.dateTaken != null ? this.dateTaken
                 : (this.dateCreated != null ? this.dateCreated : this.dateModified);
         Date otherDate = other.dateTaken != null ? other.dateTaken
                 : (other.dateCreated != null ? other.dateCreated : other.dateModified);
 
-        logger.info("[QUALITY]   Date check: {} date={}, {} date={}",
-                this.file.getName(), thisDate,
-                other.file.getName(), otherDate);
-
-        if (thisDate != null && otherDate != null) {
-            // If this file is OLDER (before other), it's the better original
-            if (thisDate.before(otherDate)) {
-                logger.info("[QUALITY]   Result: {} is BETTER (older date)", this.file.getName());
-                return true; // This is older = better (true original)
-            } else if (thisDate.after(otherDate)) {
-                logger.info("[QUALITY]   Result: {} is WORSE (newer date)", this.file.getName());
-                return false; // This is newer = worse (likely a copy/edit)
-            }
-            logger.info("[QUALITY]   Dates are equal, checking resolution...");
-            // If dates are equal, fall through to resolution comparison
-        }
-
-        // Priority 2: Resolution comparison (for perceptual duplicates with
-        // same/unknown dates)
+        // Priority 2: Resolution comparison
         int thisQuality = this.getQualityScore();
         int otherQuality = other.getQualityScore();
 
-        logger.info("[QUALITY]   Quality scores: {} = {}px ({}x{}), {} = {}px ({}x{})",
-                this.file.getName(), thisQuality, this.imageWidth, this.imageHeight,
-                other.file.getName(), otherQuality, other.imageWidth, other.imageHeight);
+        // Format dates
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        String thisDateStr = thisDate != null ? sdf.format(thisDate) : "N/A";
+        String otherDateStr = otherDate != null ? sdf.format(otherDate) : "N/A";
 
-        boolean result = thisQuality > otherQuality;
-        logger.info("[QUALITY]   Result: {} is {} (by resolution)",
-                this.file.getName(), result ? "BETTER" : "WORSE");
+        // Format file sizes
+        String thisSize = formatFileSize(this.fileSize);
+        String otherSize = formatFileSize(other.fileSize);
+
+        // Format resolution
+        String thisRes = (this.imageWidth != null && this.imageHeight != null)
+                ? String.format("%dx%d (%.1fMP)", this.imageWidth, this.imageHeight, thisQuality / 1_000_000.0)
+                : "N/A";
+        String otherRes = (other.imageWidth != null && other.imageHeight != null)
+                ? String.format("%dx%d (%.1fMP)", other.imageWidth, other.imageHeight, otherQuality / 1_000_000.0)
+                : "N/A";
+
+        // Build comparison table
+        logger.info("[QUALITY] ═══════════════════════════════════════════════════════════════════════");
+        logger.info("[QUALITY] Comparing: {}  vs  {}", file1Path, file2Path);
+        logger.info("[QUALITY] ───────────────────────────────────────────────────────────────────────");
+
+        // Copy Pattern comparison
+        String copyPatternEq = (thisHasCopyPattern == otherHasCopyPattern) ? " [EQUAL]" : "";
+        logger.info("[QUALITY] Copy Pattern    : {:<20} vs  {}{}",
+                thisHasCopyPattern, otherHasCopyPattern, copyPatternEq);
+
+        // Date comparison
+        String dateEq = (thisDate != null && otherDate != null && thisDate.equals(otherDate)) ? " [EQUAL]" : "";
+        logger.info("[QUALITY] Date Taken      : {:<20} vs  {}{}",
+                thisDateStr, otherDateStr, dateEq);
+
+        // Resolution comparison
+        String resEq = (thisQuality == otherQuality) ? " [EQUAL]" : "";
+        logger.info("[QUALITY] Resolution      : {:<20} vs  {}{}",
+                thisRes, otherRes, resEq);
+
+        // File size comparison
+        String sizeEq = (this.fileSize != null && other.fileSize != null && this.fileSize.equals(other.fileSize))
+                ? " [EQUAL]"
+                : "";
+        logger.info("[QUALITY] File Size       : {:<20} vs  {}{}",
+                thisSize, otherSize, sizeEq);
+
+        logger.info("[QUALITY] ───────────────────────────────────────────────────────────────────────");
+
+        // Determine winner and reason
+        boolean result;
+        String reason;
+        String winnerPath;
+
+        // Apply comparison logic
+        if (thisHasCopyPattern && !otherHasCopyPattern) {
+            result = false;
+            reason = "File 2 has cleaner filename (no copy pattern)";
+            winnerPath = file2Path;
+        } else if (!thisHasCopyPattern && otherHasCopyPattern) {
+            result = true;
+            reason = "File 1 has cleaner filename (no copy pattern)";
+            winnerPath = file1Path;
+        } else if (thisDate != null && otherDate != null) {
+            if (thisDate.before(otherDate)) {
+                result = true;
+                reason = "File 1 is older (original by date)";
+                winnerPath = file1Path;
+            } else if (thisDate.after(otherDate)) {
+                result = false;
+                reason = "File 2 is older (original by date)";
+                winnerPath = file2Path;
+            } else {
+                // Dates are equal, check resolution
+                result = thisQuality > otherQuality;
+                if (thisQuality > otherQuality) {
+                    reason = "File 1 has higher resolution";
+                    winnerPath = file1Path;
+                } else if (otherQuality > thisQuality) {
+                    reason = "File 2 has higher resolution";
+                    winnerPath = file2Path;
+                } else {
+                    reason = "Files are equivalent, defaulting to File 1";
+                    winnerPath = file1Path;
+                }
+            }
+        } else {
+            // No date info, use resolution
+            result = thisQuality > otherQuality;
+            if (thisQuality > otherQuality) {
+                reason = "File 1 has higher resolution";
+                winnerPath = file1Path;
+            } else if (otherQuality > thisQuality) {
+                reason = "File 2 has higher resolution";
+                winnerPath = file2Path;
+            } else {
+                reason = "Files are equivalent, defaulting to File 1";
+                winnerPath = file1Path;
+            }
+        }
+
+        logger.info("[QUALITY] ✓ WINNER: {} - Reason: {}", winnerPath, reason);
+        logger.info("[QUALITY] ═══════════════════════════════════════════════════════════════════════");
 
         return result;
+    }
+
+    /**
+     * Format file size for display
+     */
+    private String formatFileSize(Long bytes) {
+        if (bytes == null)
+            return "N/A";
+        if (bytes < 1024)
+            return bytes + " B";
+        if (bytes < 1024 * 1024)
+            return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024 * 1024 * 1024)
+            return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
+        return String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
     /**

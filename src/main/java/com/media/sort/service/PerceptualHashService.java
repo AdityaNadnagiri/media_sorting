@@ -43,7 +43,7 @@ public class PerceptualHashService {
         try {
             BufferedImage image = ImageIO.read(imageFile);
             if (image == null) {
-                logger.warn("Failed to read image: {}", imageFile.getName());
+                logger.warn("Failed to read image: {}", imageFile.getAbsolutePath());
                 return null;
             }
 
@@ -68,10 +68,10 @@ public class PerceptualHashService {
             return Long.toHexString(hash);
 
         } catch (IOException e) {
-            logger.error("Error computing perceptual hash for: {}", imageFile.getName(), e);
+            logger.error("Error computing perceptual hash for: {}", imageFile.getAbsolutePath(), e);
             return null;
         } catch (Exception e) {
-            logger.error("Unexpected error in perceptual hash computation: {}", imageFile.getName(), e);
+            logger.error("Unexpected error in perceptual hash computation: {}", imageFile.getAbsolutePath(), e);
             return null;
         }
     }
