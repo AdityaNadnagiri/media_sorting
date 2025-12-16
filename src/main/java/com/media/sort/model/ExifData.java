@@ -480,33 +480,33 @@ public class ExifData {
                 : "N/A";
 
         // Build comparison table
-        logger.info("[QUALITY] ═══════════════════════════════════════════════════════════════════════");
+        logger.info("[QUALITY] ========================================================================");
         logger.info("[QUALITY] Comparing: {}  vs  {}", file1Path, file2Path);
-        logger.info("[QUALITY] ───────────────────────────────────────────────────────────────────────");
+        logger.info("[QUALITY] ------------------------------------------------------------------------");
 
         // Copy Pattern comparison
         String copyPatternEq = (thisHasCopyPattern == otherHasCopyPattern) ? " [EQUAL]" : "";
-        logger.info("[QUALITY] Copy Pattern    : {:<20} vs  {}{}",
-                thisHasCopyPattern, otherHasCopyPattern, copyPatternEq);
+        logger.info("[QUALITY] Copy Pattern    : {} vs  {}{}",
+                String.format("%-20s", thisHasCopyPattern), otherHasCopyPattern, copyPatternEq);
 
         // Date comparison
         String dateEq = (thisDate != null && otherDate != null && thisDate.equals(otherDate)) ? " [EQUAL]" : "";
-        logger.info("[QUALITY] Date Taken      : {:<20} vs  {}{}",
-                thisDateStr, otherDateStr, dateEq);
+        logger.info("[QUALITY] Date Taken      : {} vs  {}{}",
+                String.format("%-20s", thisDateStr), otherDateStr, dateEq);
 
         // Resolution comparison
         String resEq = (thisQuality == otherQuality) ? " [EQUAL]" : "";
-        logger.info("[QUALITY] Resolution      : {:<20} vs  {}{}",
-                thisRes, otherRes, resEq);
+        logger.info("[QUALITY] Resolution      : {} vs  {}{}",
+                String.format("%-20s", thisRes), otherRes, resEq);
 
         // File size comparison
         String sizeEq = (this.fileSize != null && other.fileSize != null && this.fileSize.equals(other.fileSize))
                 ? " [EQUAL]"
                 : "";
-        logger.info("[QUALITY] File Size       : {:<20} vs  {}{}",
-                thisSize, otherSize, sizeEq);
+        logger.info("[QUALITY] File Size       : {} vs  {}{}",
+                String.format("%-20s", thisSize), otherSize, sizeEq);
 
-        logger.info("[QUALITY] ───────────────────────────────────────────────────────────────────────");
+        logger.info("[QUALITY] ------------------------------------------------------------------------");
 
         // Determine winner and reason
         boolean result;
@@ -561,7 +561,7 @@ public class ExifData {
         }
 
         logger.info("[QUALITY] ✓ WINNER: {} - Reason: {}", winnerPath, reason);
-        logger.info("[QUALITY] ═══════════════════════════════════════════════════════════════════════");
+        logger.info("[QUALITY] ========================================================================");
 
         return result;
     }
