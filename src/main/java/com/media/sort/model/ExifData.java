@@ -11,6 +11,7 @@ import com.drew.metadata.exif.GpsDirectory;
 import com.media.sort.service.FileTypeRegistry;
 import com.media.sort.service.ProgressTracker;
 import com.media.sort.service.VideoExifDataService;
+import com.media.sort.util.DuplicatePatternUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -272,12 +273,11 @@ public class ExifData {
     }
 
     public void determineFolderDate() {
-        if (dateTaken != null) {
-            folderDate = DATE_FORMAT.format(dateTaken);
-        } else if (dateCreated != null) {
-            folderDate = DATE_FORMAT.format(dateCreated);
-        } else if (dateModified != null) {
-            folderDate = DATE_FORMAT.format(dateModified);
+        // Use the getEarliestDate() helper to avoid code duplication
+        Date earliestDate = getEarliestDate();
+
+        if (earliestDate != null) {
+            folderDate = DATE_FORMAT.format(earliestDate);
         }
     }
 
@@ -430,6 +430,30 @@ public class ExifData {
     }
 
     /**
+     * Get the earliest date among dateTaken, dateCreated, and dateModified
+     * This is used for determining the true original file in duplicate detection
+     * 
+     * @return The earliest date, or null if no dates are available
+     */
+    public Date getEarliestDate() {
+        Date earliestDate = null;
+
+        if (dateTaken != null) {
+            earliestDate = dateTaken;
+        }
+
+        if (dateCreated != null && (earliestDate == null || dateCreated.before(earliestDate))) {
+            earliestDate = dateCreated;
+        }
+
+        if (dateModified != null && (earliestDate == null || dateModified.before(earliestDate))) {
+            earliestDate = dateModified;
+        }
+
+        return earliestDate;
+    }
+
+    /**
      * Check if this file is better quality than another
      * Priority order:
      * 1. No OS-generated duplicate patterns = better (e.g., no "(1)", " - Copy
@@ -449,14 +473,14 @@ public class ExifData {
         String file2Path = other.file.getAbsolutePath();
 
         // Priority 0: OS-generated duplicate pattern detection
-        boolean thisHasCopyPattern = hasOSDuplicatePattern(this.file.getName());
-        boolean otherHasCopyPattern = hasOSDuplicatePattern(other.file.getName());
+        boolean thisHasCopyPattern = DuplicatePatternUtils
+                .hasOSDuplicatePattern(this.file.getName());
+        boolean otherHasCopyPattern = DuplicatePatternUtils
+                .hasOSDuplicatePattern(other.file.getName());
 
-        // Priority 1: Date comparison
-        Date thisDate = this.dateTaken != null ? this.dateTaken
-                : (this.dateCreated != null ? this.dateCreated : this.dateModified);
-        Date otherDate = other.dateTaken != null ? other.dateTaken
-                : (other.dateCreated != null ? other.dateCreated : other.dateModified);
+        // Priority 1: Date comparison - use the EARLIEST date among all three dates
+        Date thisDate = getEarliestDate();
+        Date otherDate = other.getEarliestDate();
 
         // Priority 2: Resolution comparison
         int thisQuality = this.getQualityScore();
@@ -581,28 +605,4 @@ public class ExifData {
         return String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
-    /**
-     * Check if filename contains OS-generated duplicate patterns
-     * Matches very specific patterns like: (1), (2), - Copy, copy1, etc.
-     */
-    private boolean hasOSDuplicatePattern(String filename) {
-        if (filename == null) {
-            return false;
-        }
-
-        // Match patterns like: "(1)", "(2)", " (1)", " (2)", etc.
-        if (filename.matches(".*\\s*\\(\\d+\\).*")) {
-            return true;
-        }
-
-        String lower = filename.toLowerCase();
-
-        // Windows/Mac copy patterns
-        return lower.contains(" - copy") || // "Photo - Copy.jpg"
-                lower.contains("- copy (") || // "Photo - Copy (2).jpg"
-                lower.contains(" copy ") || // "Photo copy 1.jpg"
-                lower.matches(".*copy\\d+.*") || // "Photocopy1.jpg"
-                lower.matches(".*copy_\\d+.*") || // "Photo_copy_1.jpg"
-                lower.matches(".*\\dcopy\\d.*"); // "Photo1copy1.jpg"
-    }
 }

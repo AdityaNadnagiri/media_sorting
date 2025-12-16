@@ -75,12 +75,8 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
         boolean isImage = dto.getMediaType() == MediaFileDTO.MediaType.IMAGE;
         String folderDate = fileData.getFolderDate();
 
-        // Fallback to current date if no metadata date is available
-        if (folderDate == null || folderDate.isEmpty()) {
-            folderDate = dateFormat.format(new java.util.Date());
-            logger.warn("No date metadata found for file: {}, using current date: {}",
-                    fileData.getFile().getName(), folderDate);
-        }
+        // Don't use fallback date - let MediaFileService handle missing dates
+        // by skipping the date folder level in the hierarchy
 
         ExifData originalFileData = fileHashMap.get(fileHash);
 
@@ -105,7 +101,8 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
             if (isImage) {
                 if (!currentIsBetter) {
                     // Current file is WORSE quality (or has copy pattern) - it's a duplicate
-                    mediaFileService.executeMove(fileData, new File(duplicateImageDirectory, folderDate), true, false);
+                    mediaFileService.executeMove(fileData,
+                            new File(duplicateImageDirectory, folderDate != null ? folderDate : ""), true, false);
                     logger.info("Moved duplicate: {} to Duplicates, kept better original: {}",
                             fileData.getFile().getName(), originalFileData.getFile().getName());
                 } else {
