@@ -584,7 +584,7 @@ public class ExifData {
             }
         }
 
-        logger.info("[QUALITY] ✓ WINNER: {} - Reason: {}", winnerPath, reason);
+        logger.info("[QUALITY] WINNER: {} - Reason: {}", winnerPath, reason);
         logger.info("[QUALITY] ========================================================================");
 
         return result;

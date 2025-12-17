@@ -435,11 +435,27 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
     /**
      * Checks if name2 looks like a copy of name1
      * e.g. name1="IMG.jpg", name2="IMG - low.jpg" -> true
+     * NOTE: Only returns true if BOTH files have the SAME extension
      */
     private boolean isCopyPattern(String original, String candidate) {
         try {
             if (original.equalsIgnoreCase(candidate))
                 return false; // Same name isn't a copy pattern (handled by exact hash or file collision)
+
+            // Extract extensions
+            String extOriginal = original.contains(".")
+                    ? original.substring(original.lastIndexOf('.') + 1).toLowerCase()
+                    : "";
+            String extCandidate = candidate.contains(".")
+                    ? candidate.substring(candidate.lastIndexOf('.') + 1).toLowerCase()
+                    : "";
+
+            // CRITICAL: Files must have the same extension to be considered duplicates
+            // Example: SH8A8911.CR2 and SH8A8911(1).JPG are DIFFERENT file types, not
+            // duplicates
+            if (!extOriginal.equals(extCandidate)) {
+                return false;
+            }
 
             String baseOriginal = original.contains(".") ? original.substring(0, original.lastIndexOf('.')) : original;
             String baseCandidate = candidate.contains(".") ? candidate.substring(0, candidate.lastIndexOf('.'))
