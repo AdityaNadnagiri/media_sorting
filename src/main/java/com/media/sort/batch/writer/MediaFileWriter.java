@@ -264,9 +264,11 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
 
             // First occurrence - original file (unique, no duplicate - clean name)
             if (isImage) {
-                mediaFileService.executeMove(fileData, new File(originalImageDirectory, folderDate), false, true);
+                mediaFileService.executeMove(fileData,
+                        new File(originalImageDirectory, folderDate != null ? folderDate : ""), false, true);
             } else {
-                mediaFileService.executeMove(fileData, new File(originalVideoDirectory, folderDate), false, true);
+                mediaFileService.executeMove(fileData,
+                        new File(originalVideoDirectory, folderDate != null ? folderDate : ""), false, true);
             }
 
             // Only add to map if move succeeded
