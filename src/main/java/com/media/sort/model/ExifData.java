@@ -121,11 +121,28 @@ public class ExifData {
         this.dateCreated = new Date(attr.creationTime().toMillis());
         this.dateModified = new Date(attr.lastModifiedTime().toMillis());
 
+        // Track additional date candidates for validation
+        Date exifDateOriginal = null;
+        Date exifDateDigitized = null;
+        Date gpsDate = null;
+        Date quickTimeDate = null;
+        Date xmpDate = null;
+
+        // Extract metadata from all available directories
         for (Directory directory : metadata.getDirectories()) {
             if (directory instanceof ExifSubIFDDirectory) {
-                processExifDirectory((ExifSubIFDDirectory) directory);
+                exifDateOriginal = processExifDirectory((ExifSubIFDDirectory) directory);
             } else if (directory instanceof GpsDirectory && !directory.getTags().isEmpty()) {
-                processGpsDirectory((GpsDirectory) directory);
+                gpsDate = processGpsDirectory((GpsDirectory) directory);
+            } else if (directory.getClass().getSimpleName().contains("QuickTime")) {
+                // Handle QuickTime metadata (HEIC, MOV, MP4 embedded in images)
+                quickTimeDate = processQuickTimeDirectory(directory);
+            } else if (directory.getClass().getSimpleName().contains("Xmp")) {
+                // Handle XMP metadata (PNG, WebP, edited images)
+                xmpDate = processXmpDirectory(directory);
+            } else if (directory.getClass().getSimpleName().contains("Png")) {
+                // Handle PNG-specific metadata
+                processPngDirectory(directory);
             }
 
             if (deviceName != null && deviceModel != null && dateTaken != null &&
@@ -133,13 +150,116 @@ public class ExifData {
                 break;
             }
         }
+
+        // Apply date priority waterfall if dateTaken is still null
+        if (dateTaken == null) {
+            selectBestDate(exifDateOriginal, exifDateDigitized, gpsDate, quickTimeDate, xmpDate);
+        }
     }
 
-    private void processExifDirectory(ExifSubIFDDirectory directory) {
-        if (dateTaken == null) {
-            dateTaken = directory.getDateOriginal();
+    /**
+     * Select the best date from multiple sources using priority waterfall
+     * Priority: GPS > EXIF Original > EXIF Digitized > QuickTime > XMP > Filesystem
+     */
+    private void selectBestDate(Date exifOriginal, Date exifDigitized, Date gps,
+            Date quickTime, Date xmp) {
+        // Priority 1: GPS date (most reliable - from satellites, UTC)
+        if (gps != null && isValidDate(gps)) {
+            dateTaken = gps;
+            logger.debug("Using GPS date: {}", gps);
+            return;
         }
 
+        // Priority 2: EXIF DateTimeOriginal
+        if (exifOriginal != null && isValidDate(exifOriginal)) {
+            dateTaken = exifOriginal;
+            logger.debug("Using EXIF DateTimeOriginal: {}", exifOriginal);
+            return;
+        }
+
+        // Priority 3: EXIF DateTimeDigitized
+        if (exifDigitized != null && isValidDate(exifDigitized)) {
+            dateTaken = exifDigitized;
+            logger.debug("Using EXIF DateTimeDigitized: {}", exifDigitized);
+            return;
+        }
+
+        // Priority 4: QuickTime creation time (for HEIC)
+        if (quickTime != null && isValidDate(quickTime)) {
+            dateTaken = quickTime;
+            logger.debug("Using QuickTime creation date: {}", quickTime);
+            return;
+        }
+
+        // Priority 5: XMP metadata (for PNG, WebP, edited images)
+        if (xmp != null && isValidDate(xmp)) {
+            dateTaken = xmp;
+            logger.debug("Using XMP date: {}", xmp);
+            return;
+        }
+
+        // No reliable date found - dateTaken remains null
+        logger.debug("No reliable EXIF/metadata date found for: {}", file.getName());
+    }
+
+    /**
+     * Validate that a date is reasonable (not corrupted)
+     */
+    private boolean isValidDate(Date date) {
+        if (date == null)
+            return false;
+
+        try {
+            // Reject dates before 2000 (likely corrupted - 1970, 1980 defaults)
+            Date minDate = DATE_FORMAT.parse("2000-01-01");
+            // Reject dates in the future (camera clock wrong)
+            Date maxDate = new Date(System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000)); // +1 year
+
+            return !date.before(minDate) && !date.after(maxDate);
+        } catch (ParseException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Process EXIF directory and extract dates + device info
+     * Returns DateTimeOriginal for priority comparison
+     */
+    private Date processExifDirectory(ExifSubIFDDirectory directory) {
+        Date dateOriginal = null;
+        Date dateDigitized = null;
+
+        // Extract multiple EXIF date fields
+        if (dateTaken == null) {
+            // Try DateTimeOriginal first (most reliable)
+            dateOriginal = directory.getDateOriginal();
+            if (dateOriginal != null && isValidDate(dateOriginal)) {
+                dateTaken = dateOriginal;
+            }
+
+            // Try DateTimeDigitized as backup
+            if (dateTaken == null) {
+                dateDigitized = directory.getDateDigitized();
+                if (dateDigitized != null && isValidDate(dateDigitized)) {
+                    dateTaken = dateDigitized;
+                }
+            }
+
+            // Try generic DateTime as last resort
+            if (dateTaken == null) {
+                try {
+                    Date genericDate = directory.getDate(
+                            com.drew.metadata.exif.ExifDirectoryBase.TAG_DATETIME);
+                    if (genericDate != null && isValidDate(genericDate)) {
+                        dateTaken = genericDate;
+                    }
+                } catch (Exception e) {
+                    logger.debug("Could not extract generic DateTime from EXIF");
+                }
+            }
+        }
+
+        // Extract device information
         for (Tag tag : directory.getParent().getTags()) {
             if ("Make".equals(tag.getTagName()) && deviceName == null) {
                 deviceName = tag.getDescription();
@@ -159,14 +279,153 @@ public class ExifData {
                 break;
             }
         }
+
+        return dateOriginal;
     }
 
-    private void processGpsDirectory(GpsDirectory directory) {
+    /**
+     * Process QuickTime directory (for HEIC, MOV, MP4)
+     */
+    private Date processQuickTimeDirectory(Directory directory) {
+        try {
+            // QuickTime creation time tag
+            Date creationTime = directory.getDate(
+                    com.drew.metadata.mov.QuickTimeDirectory.TAG_CREATION_TIME);
+            if (creationTime != null && isValidDate(creationTime)) {
+                logger.debug("Found QuickTime creation time: {}", creationTime);
+                return creationTime;
+            }
+        } catch (Exception e) {
+            logger.debug("Could not extract QuickTime date: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Process XMP directory (for PNG, WebP, Adobe-edited images)
+     */
+    private Date processXmpDirectory(Directory directory) {
+        try {
+            // Try various XMP date tags
+            for (Tag tag : directory.getTags()) {
+                String tagName = tag.getTagName();
+                if (tagName != null && (tagName.contains("Date") || tagName.contains("DateTime"))) {
+                    String dateStr = tag.getDescription();
+                    if (dateStr != null) {
+                        Date xmpDate = parseXmpDate(dateStr);
+                        if (xmpDate != null && isValidDate(xmpDate)) {
+                            logger.debug("Found XMP date from {}: {}", tagName, xmpDate);
+                            return xmpDate;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("Could not extract XMP date: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Process PNG directory (for PNG-specific metadata)
+     */
+    private void processPngDirectory(Directory directory) {
+        try {
+            // PNG metadata can be in textual chunks
+            for (Tag tag : directory.getTags()) {
+                String tagName = tag.getTagName();
+                if (tagName != null && tagName.toLowerCase().contains("creation")) {
+                    String dateStr = tag.getDescription();
+                    if (dateStr != null) {
+                        Date pngDate = parseFlexibleDate(dateStr);
+                        if (pngDate != null && isValidDate(pngDate) && dateTaken == null) {
+                            dateTaken = pngDate;
+                            logger.debug("Found PNG creation date: {}", pngDate);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("Could not extract PNG date: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Parse XMP date string (can be in various formats)
+     */
+    private Date parseXmpDate(String dateStr) {
+        if (dateStr == null || dateStr.isEmpty())
+            return null;
+
+        // Common XMP date formats
+        String[] formats = {
+                "yyyy-MM-dd'T'HH:mm:ss",
+                "yyyy-MM-dd'T'HH:mm:ssZ",
+                "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+                "yyyy-MM-dd HH:mm:ss",
+                "yyyy:MM:dd HH:mm:ss"
+        };
+
+        for (String format : formats) {
+            try {
+                SimpleDateFormat sdf = new SimpleDateFormat(format);
+                return sdf.parse(dateStr);
+            } catch (ParseException e) {
+                // Try next format
+            }
+        }
+
+        logger.debug("Could not parse XMP date: {}", dateStr);
+        return null;
+    }
+
+    /**
+     * Parse date with flexible format detection
+     */
+    private Date parseFlexibleDate(String dateStr) {
+        if (dateStr == null || dateStr.isEmpty())
+            return null;
+
+        String[] formats = {
+                "yyyy-MM-dd HH:mm:ss",
+                "yyyy:MM:dd HH:mm:ss",
+                "yyyy-MM-dd",
+                "dd/MM/yyyy",
+                "MM/dd/yyyy"
+        };
+
+        for (String format : formats) {
+            try {
+                SimpleDateFormat sdf = new SimpleDateFormat(format);
+                return sdf.parse(dateStr);
+            } catch (ParseException e) {
+                // Try next format
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Process GPS directory and extract location + GPS timestamp
+     * Returns GPS date for priority comparison (GPS time is very reliable - from
+     * satellites)
+     */
+    private Date processGpsDirectory(GpsDirectory directory) {
         GeoLocation geoLocation = directory.getGeoLocation();
         if (geoLocation != null) {
             latitude = geoLocation.getLatitude();
             longitude = geoLocation.getLongitude();
         }
+
+        // Extract GPS timestamp (UTC time from satellites - highly reliable)
+        Date gpsDate = directory.getGpsDate();
+        if (gpsDate != null && isValidDate(gpsDate)) {
+            logger.debug("Found GPS date: {}", gpsDate);
+            return gpsDate;
+        }
+
+        return null;
     }
 
     public void reorderDates() {

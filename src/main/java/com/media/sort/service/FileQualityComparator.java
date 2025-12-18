@@ -23,7 +23,8 @@ public class FileQualityComparator {
      * Comparison criteria (in order of priority):
      * 1. File size (larger is better for media files)
      * 2. EXIF date taken (older is original)
-     * 3. File creation date (older is original)
+     * 3. File modified date (older is original)
+     * 4. EXIF date created (older is original)
      * 
      * @param file1 First file to compare
      * @param file2 Second file to compare
@@ -46,32 +47,22 @@ public class FileQualityComparator {
             }
         }
 
-        // 2. If we have EXIF data, compare dates (older is original)
+        // 2. If we have EXIF data, compare Date Taken (older is original)
         if (exif1 != null && exif2 != null) {
-            // Use ExifData's isAfter method - returns true if exif1 is AFTER exif2
-            // So if exif1 is after exif2, then exif2 is older (original)
-            boolean file1IsNewer = exif1.isAfter(exif2);
-
             if (exif1.getDateTaken() != null && exif2.getDateTaken() != null) {
                 if (!exif1.getDateTaken().equals(exif2.getDateTaken())) {
+                    // DateTaken differs - use ExifData's isAfter method
+                    // Returns true if exif1 is AFTER exif2, so older is original
+                    boolean file1IsNewer = exif1.isAfter(exif2);
                     logger.debug("Date taken difference: {} vs {}",
                             exif1.getDateTaken(), exif2.getDateTaken());
-                    // Older file is the original
-                    return !file1IsNewer;
+                    return !file1IsNewer; // Older file is the original
                 }
-            }
-
-            // If dates are equal or missing, check creation dates
-            if (exif1.getDateCreated() != null && exif2.getDateCreated() != null) {
-                if (!exif1.getDateCreated().equals(exif2.getDateCreated())) {
-                    logger.debug("Date created difference: {} vs {}",
-                            exif1.getDateCreated(), exif2.getDateCreated());
-                    return !file1IsNewer;
-                }
+                // If Date Taken is identical, fall through to next check
             }
         }
 
-        // 3. Fallback: compare file modification times (older is original)
+        // 3. Compare file modification times (older is original)
         long modified1 = file1.lastModified();
         long modified2 = file2.lastModified();
 
@@ -81,7 +72,20 @@ public class FileQualityComparator {
             return modified1 < modified2;
         }
 
-        // 4. If all else is equal, prefer file1 (arbitrary but consistent)
+        // 4. If we have EXIF data, compare Date Created (older is original)
+        if (exif1 != null && exif2 != null) {
+            if (exif1.getDateCreated() != null && exif2.getDateCreated() != null) {
+                if (!exif1.getDateCreated().equals(exif2.getDateCreated())) {
+                    // DateCreated differs - calculate comparison directly
+                    boolean file1CreatedIsNewer = exif1.getDateCreated().after(exif2.getDateCreated());
+                    logger.debug("Date created difference: {} vs {}",
+                            exif1.getDateCreated(), exif2.getDateCreated());
+                    return !file1CreatedIsNewer; // Older file is the original
+                }
+            }
+        }
+
+        // 5. If all else is equal, prefer file1 (arbitrary but consistent)
         logger.debug("Files are equivalent in quality, defaulting to file1");
         return true;
     }
