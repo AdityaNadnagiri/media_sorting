@@ -1,5 +1,7 @@
 package com.media.sort.runner;
 
+import com.media.sort.cli.CLICommandHandler;
+import com.media.sort.MediaSortingProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.Job;
@@ -17,9 +19,13 @@ import java.util.Date;
  * Command-line runner for executing Spring Batch jobs.
  * 
  * Usage:
- * - Organize media: --job=organize --sourceFolder=/path/to/media
- * - Cleanup empty folders: --job=cleanup --targetFolder=/path/to/folder
+ * - Organize media: --job=organize [--sourceFolder=/path/to/media]
+ * - Cleanup empty folders: --job=cleanup [--targetFolder=/path/to/folder]
  * - Compare folders: --job=compare --folder1Path=/path1 --folder2Path=/path2
+ * 
+ * Note: sourceFolder and targetFolder will default to
+ * app.media-sorting.source-folder
+ * from application.properties if not provided via command line.
  * 
  * If no job is specified, no job will run (application will exit).
  */
@@ -43,12 +49,33 @@ public class BatchCommandLineRunner implements CommandLineRunner {
     @Qualifier("folderComparisonJob")
     private Job folderComparisonJob;
 
+    @Autowired(required = false)
+    private CLICommandHandler cliCommandHandler;
+
+    @Autowired
+    private MediaSortingProperties properties;
+
     @Override
     public void run(String... args) throws Exception {
+        // Check for CLI commands first (--undo, --list-sessions)
+        if (hasArg(args, "--undo") && cliCommandHandler != null) {
+            String sessionId = getArgValue(args, "--undo");
+            String baseDir = getArgValue(args, "--sourceFolder");
+            cliCommandHandler.handleUndoCommand(sessionId, baseDir);
+            return;
+        }
+
+        if (hasArg(args, "--list-sessions") && cliCommandHandler != null) {
+            String baseDir = getArgValue(args, "--sourceFolder");
+            cliCommandHandler.handleListSessionsCommand(baseDir);
+            return;
+        }
+
         String jobName = getArgValue(args, "--job");
 
         if (jobName == null || jobName.isEmpty()) {
             logger.info("No job specified. Use --job=organize, --job=cleanup, or --job=compare");
+            logger.info("Or use: --undo=sessionId, --list-sessions");
             logger.info("Application will exit.");
             return;
         }
@@ -56,25 +83,27 @@ public class BatchCommandLineRunner implements CommandLineRunner {
         logger.info("Starting batch job: {}", jobName);
 
         switch (jobName.toLowerCase()) {
-            case "organize":
-                runOrganizeJob(args);
-                break;
-            case "cleanup":
-                runCleanupJob(args);
-                break;
-            case "compare":
-                runCompareJob(args);
-                break;
-            default:
-                logger.error("Unknown job: {}. Valid jobs are: organize, cleanup, compare", jobName);
+            case "organize" -> runOrganizeJob(args);
+            case "cleanup" -> runCleanupJob(args);
+            case "compare" -> runCompareJob(args);
+            default -> logger.error("Unknown job: {}. Valid jobs are: organize, cleanup, compare", jobName);
         }
     }
 
     private void runOrganizeJob(String[] args) throws Exception {
+        // Try command line arg first, then fall back to application.properties
         String sourceFolder = getArgValue(args, "--sourceFolder");
 
-        if (sourceFolder == null) {
-            logger.error("Missing required parameter: --sourceFolder");
+        if (sourceFolder == null || sourceFolder.isEmpty()) {
+            sourceFolder = properties.getSourceFolder();
+            logger.info("Using source folder from application.properties: {}", sourceFolder);
+        } else {
+            logger.info("Using source folder from command line: {}", sourceFolder);
+        }
+
+        if (sourceFolder == null || sourceFolder.isEmpty()) {
+            logger.error(
+                    "Missing source folder. Provide --sourceFolder or configure app.media-sorting.source-folder in application.properties");
             return;
         }
 
@@ -127,10 +156,19 @@ public class BatchCommandLineRunner implements CommandLineRunner {
     }
 
     private void runCleanupJob(String[] args) throws Exception {
+        // Try command line arg first, then fall back to application.properties
         String targetFolder = getArgValue(args, "--targetFolder");
 
-        if (targetFolder == null) {
-            logger.error("Missing required parameter: --targetFolder");
+        if (targetFolder == null || targetFolder.isEmpty()) {
+            targetFolder = properties.getSourceFolder();
+            logger.info("Using target folder from application.properties: {}", targetFolder);
+        } else {
+            logger.info("Using target folder from command line: {}", targetFolder);
+        }
+
+        if (targetFolder == null || targetFolder.isEmpty()) {
+            logger.error(
+                    "Missing target folder. Provide --targetFolder or configure app.media-sorting.source-folder in application.properties");
             return;
         }
 
@@ -174,5 +212,17 @@ public class BatchCommandLineRunner implements CommandLineRunner {
             }
         }
         return null;
+    }
+
+    /**
+     * Check if argument exists
+     */
+    private boolean hasArg(String[] args, String argName) {
+        for (String arg : args) {
+            if (arg.startsWith(argName)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

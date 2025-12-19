@@ -4,12 +4,13 @@ import com.media.sort.batch.dto.FileMoveDTO;
 import com.media.sort.batch.dto.FileHashDTO;
 import com.media.sort.model.ExifData;
 import com.media.sort.service.FileQualityComparator;
-
 import com.media.sort.service.MediaFileService;
+import com.media.sort.service.PerceptualHashService;
 import com.media.sort.service.ProgressTrackerFactory;
+import com.media.sort.util.DuplicatePatternUtils;
 import com.media.sort.util.FileOperationUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.item.ItemProcessor;
 
 import java.io.File;
@@ -19,62 +20,148 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Enhanced ItemProcessor that checks if a file is a duplicate and determines
  * quality.
+ * Includes burst detection, RAW+JPEG pairing, and perceptual hashing.
  * Compares file size, EXIF data, and dates to determine which is original vs
  * duplicate.
  */
+@Slf4j
+@RequiredArgsConstructor
 public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> {
-
-    private static final Logger logger = LoggerFactory.getLogger(DuplicateFileProcessor.class);
 
     private final MediaFileService mediaFileService;
     private final FileQualityComparator qualityComparator;
     private final ProgressTrackerFactory progressTrackerFactory;
     private final ConcurrentHashMap<String, FileHashDTO> referenceHashMap;
-
-    public DuplicateFileProcessor(MediaFileService mediaFileService,
-            FileQualityComparator qualityComparator,
-            ProgressTrackerFactory progressTrackerFactory,
-            ConcurrentHashMap<String, FileHashDTO> referenceHashMap) {
-        this.mediaFileService = mediaFileService;
-        this.qualityComparator = qualityComparator;
-        this.progressTrackerFactory = progressTrackerFactory;
-        this.referenceHashMap = referenceHashMap;
-    }
+    private final PerceptualHashService perceptualHashService;
 
     @Override
     public FileMoveDTO process(File file) throws Exception {
         try {
             String hash = mediaFileService.calculateHash(file.toPath());
 
+            // Check for exact hash match
             if (referenceHashMap.containsKey(hash)) {
-                // Duplicate found - compare quality
                 FileHashDTO referenceDTO = referenceHashMap.get(hash);
 
-                logger.info("Duplicate found: {} matches {}",
+                // Apply burst detection - skip if files are sequential burst shots
+                if (isBurstSequence(file, referenceDTO.getFile())) {
+                    log.info("Burst sequence detected, skipping duplicate marking: {} and {}",
+                            file.getName(), referenceDTO.getFile().getName());
+                    return null;
+                }
+
+                // Apply RAW+JPEG pairing - skip if files are RAW+JPEG pair
+                if (isRawJpegPair(file, referenceDTO.getFile())) {
+                    log.info("RAW+JPEG pair detected, skipping duplicate marking: {} and {}",
+                            file.getName(), referenceDTO.getFile().getName());
+                    return null;
+                }
+
+                log.info("Exact duplicate found: {} matches {}",
                         file.getAbsolutePath(), referenceDTO.getFilePath().toString());
 
-                // Extract EXIF data for current file if it's a media file
-                ExifData sourceExif = extractExifData(file);
-                ExifData referenceExif = referenceDTO.getExifData();
+                return processDuplicate(file, referenceDTO);
+            }
 
-                // Compare quality
-                FileQualityComparator.ComparisonResult comparison = qualityComparator.compareFiles(
-                        file,
-                        referenceDTO.getFile(),
-                        sourceExif,
-                        referenceExif);
+            // Check for perceptual duplicate (visually similar)
+            if (perceptualHashService != null && isImageFile(file)) {
+                FileHashDTO perceptualMatch = findPerceptualDuplicate(file);
+                if (perceptualMatch != null) {
+                    // Apply same filters
+                    if (isBurstSequence(file, perceptualMatch.getFile())) {
+                        log.info("Burst sequence detected (perceptual), skipping: {} and {}",
+                                file.getName(), perceptualMatch.getFile().getName());
+                        return null;
+                    }
 
-                // Determine move strategy based on which is original
-                return createMoveDTO(file, referenceDTO, comparison);
+                    if (isRawJpegPair(file, perceptualMatch.getFile())) {
+                        log.info("RAW+JPEG pair detected (perceptual), skipping: {} and {}",
+                                file.getName(), perceptualMatch.getFile().getName());
+                        return null;
+                    }
+
+                    log.info("Perceptual duplicate found: {} visually similar to {}",
+                            file.getAbsolutePath(), perceptualMatch.getFilePath().toString());
+
+                    return processDuplicate(file, perceptualMatch);
+                }
             }
 
             // Not a duplicate
             return null;
 
         } catch (Exception e) {
-            logger.error("Error processing file for duplicates: {}", file.getAbsolutePath(), e);
+            log.error("Error processing file for duplicates: {}", file.getAbsolutePath(), e);
             return null;
         }
+    }
+
+    /**
+     * Process a duplicate file and create appropriate move DTO
+     */
+    private FileMoveDTO processDuplicate(File file, FileHashDTO referenceDTO) {
+        // Extract EXIF data for current file if it's a media file
+        ExifData sourceExif = extractExifData(file);
+        ExifData referenceExif = referenceDTO.getExifData();
+
+        // Compare quality
+        FileQualityComparator.ComparisonResult comparison = qualityComparator.compareFiles(
+                file,
+                referenceDTO.getFile(),
+                sourceExif,
+                referenceExif);
+
+        // Determine move strategy based on which is original
+        return createMoveDTO(file, referenceDTO, comparison);
+    }
+
+    /**
+     * Check if files are part of a burst sequence
+     */
+    private boolean isBurstSequence(File file1, File file2) {
+        return DuplicatePatternUtils.isBurstSequence(file1.getName(), file2.getName());
+    }
+
+    /**
+     * Check if files are a RAW+JPEG pair
+     */
+    private boolean isRawJpegPair(File file1, File file2) {
+        return DuplicatePatternUtils.isRawJpegPair(file1.getName(), file2.getName());
+    }
+
+    /**
+     * Check if file is an image
+     */
+    private boolean isImageFile(File file) {
+        String name = file.getName().toLowerCase();
+        return name.endsWith(".jpg") || name.endsWith(".jpeg") ||
+                name.endsWith(".png") || name.endsWith(".gif") ||
+                name.endsWith(".bmp") || name.endsWith(".tiff") ||
+                name.endsWith(".webp") || name.endsWith(".heic");
+    }
+
+    /**
+     * Find perceptual duplicate by comparing perceptual hashes
+     */
+    private FileHashDTO findPerceptualDuplicate(File file) {
+        try {
+            String perceptualHash = perceptualHashService.computeHash(file);
+            if (perceptualHash == null) {
+                return null;
+            }
+
+            // Search through reference hash map for perceptually similar images
+            for (FileHashDTO refDTO : referenceHashMap.values()) {
+                if (refDTO.getPerceptualHash() != null) {
+                    if (perceptualHashService.areSimilar(perceptualHash, refDTO.getPerceptualHash())) {
+                        return refDTO;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to find perceptual duplicate for: {}", file.getAbsolutePath(), e);
+        }
+        return null;
     }
 
     /**
@@ -86,6 +173,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
 
             // Set dependencies
             exifData.setVideoExifDataService(null); // Video service not needed for comparison
+            exifData.setVideoQualityComparator(null); // Uses FileQualityComparator instead
 
             if (progressTrackerFactory != null) {
                 exifData.setProgressTrackers(
@@ -101,7 +189,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
 
             return exifData;
         } catch (Exception e) {
-            logger.warn("Failed to extract EXIF data for: {}", file.getAbsolutePath(), e);
+            log.warn("Failed to extract EXIF data for: {}", file.getAbsolutePath(), e);
         }
 
         return null;
@@ -121,7 +209,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
             // But since we're processing folder1, we need to move source to replace
             // reference
             // and move reference to duplicates
-            logger.info("Source file {} is higher quality than reference {}",
+            log.info("Source file {} is higher quality than reference {}",
                     sourceFile.getAbsolutePath(), referenceDTO.getFilePath().toString());
 
             // Determine target path: replace reference file location
@@ -140,7 +228,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
 
         } else {
             // Reference file is higher quality - move source to duplicates folder
-            logger.info("Reference file {} is higher quality than source {}",
+            log.info("Reference file {} is higher quality than source {}",
                     referenceDTO.getFilePath().toString(), sourceFile.getAbsolutePath());
 
             // Determine duplicates folder path based on reference location

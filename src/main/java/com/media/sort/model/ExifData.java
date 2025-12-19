@@ -11,10 +11,10 @@ import com.drew.metadata.exif.GpsDirectory;
 import com.media.sort.service.FileTypeRegistry;
 import com.media.sort.service.ProgressTracker;
 import com.media.sort.service.VideoExifDataService;
+import com.media.sort.service.VideoQualityComparator;
 import com.media.sort.util.DuplicatePatternUtils;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.IOException;
@@ -27,10 +27,12 @@ import java.util.*;
 /**
  * Data model for EXIF metadata extracted from media files.
  * This is NOT a Spring component - instances are created directly.
+ * Uses Lombok @Data for standard getters/setters while preserving custom
+ * methods.
  */
+@Slf4j
+@Data
 public class ExifData {
-
-    private static final Logger logger = LoggerFactory.getLogger(ExifData.class);
 
     private ProgressTracker imageErrorTracker;
     private ProgressTracker compressionTracker;
@@ -38,6 +40,7 @@ public class ExifData {
 
     // Dependencies passed via setter methods
     private VideoExifDataService videoExifDataService;
+    private VideoQualityComparator videoQualityComparator;
 
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
@@ -92,6 +95,13 @@ public class ExifData {
         this.videoExifDataService = videoExifDataService;
     }
 
+    /**
+     * Set VideoQualityComparator dependency for video-specific quality comparison
+     */
+    public void setVideoQualityComparator(VideoQualityComparator videoQualityComparator) {
+        this.videoQualityComparator = videoQualityComparator;
+    }
+
     public void processFile(File file) {
         try {
             this.file = file;
@@ -108,7 +118,7 @@ public class ExifData {
             determineFolderDate();
 
         } catch (IOException | ImageProcessingException e) {
-            logger.error("Failed to process file: {}", file.getAbsolutePath(), e);
+            log.error("Failed to process file: {}", file.getAbsolutePath(), e);
             this.type = "other";
             imageErrorTracker.saveProgress("ExifData file: " + file);
         }
@@ -166,40 +176,40 @@ public class ExifData {
         // Priority 1: GPS date (most reliable - from satellites, UTC)
         if (gps != null && isValidDate(gps)) {
             dateTaken = gps;
-            logger.debug("Using GPS date: {}", gps);
+            log.debug("Using GPS date: {}", gps);
             return;
         }
 
         // Priority 2: EXIF DateTimeOriginal
         if (exifOriginal != null && isValidDate(exifOriginal)) {
             dateTaken = exifOriginal;
-            logger.debug("Using EXIF DateTimeOriginal: {}", exifOriginal);
+            log.debug("Using EXIF DateTimeOriginal: {}", exifOriginal);
             return;
         }
 
         // Priority 3: EXIF DateTimeDigitized
         if (exifDigitized != null && isValidDate(exifDigitized)) {
             dateTaken = exifDigitized;
-            logger.debug("Using EXIF DateTimeDigitized: {}", exifDigitized);
+            log.debug("Using EXIF DateTimeDigitized: {}", exifDigitized);
             return;
         }
 
         // Priority 4: QuickTime creation time (for HEIC)
         if (quickTime != null && isValidDate(quickTime)) {
             dateTaken = quickTime;
-            logger.debug("Using QuickTime creation date: {}", quickTime);
+            log.debug("Using QuickTime creation date: {}", quickTime);
             return;
         }
 
         // Priority 5: XMP metadata (for PNG, WebP, edited images)
         if (xmp != null && isValidDate(xmp)) {
             dateTaken = xmp;
-            logger.debug("Using XMP date: {}", xmp);
+            log.debug("Using XMP date: {}", xmp);
             return;
         }
 
         // No reliable date found - dateTaken remains null
-        logger.debug("No reliable EXIF/metadata date found for: {}", file.getName());
+        log.debug("No reliable EXIF/metadata date found for: {}", file.getName());
     }
 
     /**
@@ -254,7 +264,7 @@ public class ExifData {
                         dateTaken = genericDate;
                     }
                 } catch (Exception e) {
-                    logger.debug("Could not extract generic DateTime from EXIF");
+                    log.debug("Could not extract generic DateTime from EXIF");
                 }
             }
         }
@@ -292,11 +302,11 @@ public class ExifData {
             Date creationTime = directory.getDate(
                     com.drew.metadata.mov.QuickTimeDirectory.TAG_CREATION_TIME);
             if (creationTime != null && isValidDate(creationTime)) {
-                logger.debug("Found QuickTime creation time: {}", creationTime);
+                log.debug("Found QuickTime creation time: {}", creationTime);
                 return creationTime;
             }
         } catch (Exception e) {
-            logger.debug("Could not extract QuickTime date: {}", e.getMessage());
+            log.debug("Could not extract QuickTime date: {}", e.getMessage());
         }
         return null;
     }
@@ -314,14 +324,14 @@ public class ExifData {
                     if (dateStr != null) {
                         Date xmpDate = parseXmpDate(dateStr);
                         if (xmpDate != null && isValidDate(xmpDate)) {
-                            logger.debug("Found XMP date from {}: {}", tagName, xmpDate);
+                            log.debug("Found XMP date from {}: {}", tagName, xmpDate);
                             return xmpDate;
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            logger.debug("Could not extract XMP date: {}", e.getMessage());
+            log.debug("Could not extract XMP date: {}", e.getMessage());
         }
         return null;
     }
@@ -340,13 +350,13 @@ public class ExifData {
                         Date pngDate = parseFlexibleDate(dateStr);
                         if (pngDate != null && isValidDate(pngDate) && dateTaken == null) {
                             dateTaken = pngDate;
-                            logger.debug("Found PNG creation date: {}", pngDate);
+                            log.debug("Found PNG creation date: {}", pngDate);
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            logger.debug("Could not extract PNG date: {}", e.getMessage());
+            log.debug("Could not extract PNG date: {}", e.getMessage());
         }
     }
 
@@ -375,7 +385,7 @@ public class ExifData {
             }
         }
 
-        logger.debug("Could not parse XMP date: {}", dateStr);
+        log.debug("Could not parse XMP date: {}", dateStr);
         return null;
     }
 
@@ -421,7 +431,7 @@ public class ExifData {
         // Extract GPS timestamp (UTC time from satellites - highly reliable)
         Date gpsDate = directory.getGpsDate();
         if (gpsDate != null && isValidDate(gpsDate)) {
-            logger.debug("Found GPS date: {}", gpsDate);
+            log.debug("Found GPS date: {}", gpsDate);
             return gpsDate;
         }
 
@@ -458,7 +468,7 @@ public class ExifData {
             dateModified = dates.size() > 2 ? dates.get(2) : null;
 
         } catch (ParseException e) {
-            logger.error("Failed to parse threshold date", e);
+            log.error("Failed to parse threshold date", e);
             imageErrorTracker.saveProgress("ReorderDates file: " + file);
         }
     }
@@ -551,126 +561,24 @@ public class ExifData {
         }
     }
 
-    // Getters and setters
-    public File getFile() {
-        return file;
-    }
+    // ========== Lombok @Data generates standard getters/setters for all fields
+    // ==========
+    // Custom accessor methods below provide additional functionality
 
-    public void setFile(File file) {
-        this.file = file;
-    }
-
-    public String getDeviceName() {
-        return deviceName;
-    }
-
-    public void setDeviceName(String deviceName) {
-        this.deviceName = deviceName;
-    }
-
-    public String getDeviceModel() {
-        return deviceModel;
-    }
-
-    public void setDeviceModel(String deviceModel) {
-        this.deviceModel = deviceModel;
-    }
-
-    public Date getDateTaken() {
-        return dateTaken;
-    }
-
-    public void setDateTaken(Date dateTaken) {
-        this.dateTaken = dateTaken;
-    }
-
-    public Date getDateCreated() {
-        return dateCreated;
-    }
-
-    public void setDateCreated(Date dateCreated) {
-        this.dateCreated = dateCreated;
-    }
-
-    public Date getDateModified() {
-        return dateModified;
-    }
-
-    public void setDateModified(Date dateModified) {
-        this.dateModified = dateModified;
-    }
-
-    public Double getLatitude() {
+    /**
+     * Get GPS latitude (for geocoding)
+     * Alias for getLatitude() for clarity in geocoding context
+     */
+    public Double getGpsLatitude() {
         return latitude;
     }
 
-    public void setLatitude(Double latitude) {
-        this.latitude = latitude;
-    }
-
-    public Double getLongitude() {
+    /**
+     * Get GPS longitude (for geocoding)
+     * Alias for getLongitude() for clarity in geocoding context
+     */
+    public Double getGpsLongitude() {
         return longitude;
-    }
-
-    public void setLongitude(Double longitude) {
-        this.longitude = longitude;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public String getFolderDate() {
-        return folderDate;
-    }
-
-    public void setFolderDate(String folderDate) {
-        this.folderDate = folderDate;
-    }
-
-    public String getExtension() {
-        return extension;
-    }
-
-    public void setExtension(String extension) {
-        this.extension = extension;
-    }
-
-    // Perceptual hash and quality getters/setters
-    public String getPerceptualHash() {
-        return perceptualHash;
-    }
-
-    public void setPerceptualHash(String perceptualHash) {
-        this.perceptualHash = perceptualHash;
-    }
-
-    public Integer getImageWidth() {
-        return imageWidth;
-    }
-
-    public void setImageWidth(Integer imageWidth) {
-        this.imageWidth = imageWidth;
-    }
-
-    public Integer getImageHeight() {
-        return imageHeight;
-    }
-
-    public void setImageHeight(Integer imageHeight) {
-        this.imageHeight = imageHeight;
-    }
-
-    public Long getFileSize() {
-        return fileSize;
-    }
-
-    public void setFileSize(Long fileSize) {
-        this.fileSize = fileSize;
     }
 
     /**
@@ -723,10 +631,18 @@ public class ExifData {
      */
     public boolean isBetterQualityThan(ExifData other) {
         if (other == null) {
-            logger.info("[QUALITY] {} is better (other is null)", this.file.getAbsolutePath());
+            log.info("[QUALITY] {} is better (other is null)", this.file.getAbsolutePath());
             return true;
         }
 
+        // For videos, delegate to VideoQualityComparator which uses different criteria
+        // (prioritizes file size/bitrate over resolution)
+        if (this.isVideo() && other.isVideo() && videoQualityComparator != null) {
+            log.debug("[QUALITY] Delegating video comparison to VideoQualityComparator");
+            return videoQualityComparator.isVideo1BetterQuality(this, other);
+        }
+
+        // For images and mixed comparisons, use image-optimized comparison below
         // Collect comparison data first
         String file1Path = this.file.getAbsolutePath();
         String file2Path = other.file.getAbsolutePath();
@@ -745,8 +661,20 @@ public class ExifData {
         int thisQuality = this.getQualityScore();
         int otherQuality = other.getQualityScore();
 
-        // Format dates
+        // Format dates - show ALL dates to see which is earliest
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+        // Format individual dates
+        String thisDateTakenStr = this.dateTaken != null ? sdf.format(this.dateTaken) : "N/A";
+        String otherDateTakenStr = other.dateTaken != null ? sdf.format(other.dateTaken) : "N/A";
+
+        String thisDateCreatedStr = this.dateCreated != null ? sdf.format(this.dateCreated) : "N/A";
+        String otherDateCreatedStr = other.dateCreated != null ? sdf.format(other.dateCreated) : "N/A";
+
+        String thisDateModifiedStr = this.dateModified != null ? sdf.format(this.dateModified) : "N/A";
+        String otherDateModifiedStr = other.dateModified != null ? sdf.format(other.dateModified) : "N/A";
+
+        // Format earliest date (the one actually used)
         String thisDateStr = thisDate != null ? sdf.format(thisDate) : "N/A";
         String otherDateStr = otherDate != null ? sdf.format(otherDate) : "N/A";
 
@@ -756,95 +684,189 @@ public class ExifData {
 
         // Format resolution
         String thisRes = (this.imageWidth != null && this.imageHeight != null)
-                ? String.format("%dx%d (%.1fMP)", this.imageWidth, this.imageHeight, thisQuality / 1_000_000.0)
+                ? "%dx%d (%.1fMP)".formatted(this.imageWidth, this.imageHeight, thisQuality / 1_000_000.0)
                 : "N/A";
         String otherRes = (other.imageWidth != null && other.imageHeight != null)
-                ? String.format("%dx%d (%.1fMP)", other.imageWidth, other.imageHeight, otherQuality / 1_000_000.0)
+                ? "%dx%d (%.1fMP)".formatted(other.imageWidth, other.imageHeight, otherQuality / 1_000_000.0)
                 : "N/A";
 
-        // Build comparison table
-        logger.info("[QUALITY] ========================================================================");
-        logger.info("[QUALITY] Comparing: {}  vs  {}", file1Path, file2Path);
-        logger.info("[QUALITY] ------------------------------------------------------------------------");
+        // Start comparison table
+        log.info("[QUALITY] ========================================================================");
+        log.info("[QUALITY] Comparing: {}  vs  {}", file1Path, file2Path);
+        log.info("[QUALITY] ------------------------------------------------------------------------");
 
-        // Copy Pattern comparison
-        String copyPatternEq = (thisHasCopyPattern == otherHasCopyPattern) ? " [EQUAL]" : "";
-        logger.info("[QUALITY] Copy Pattern    : {} vs  {}{}",
-                String.format("%-20s", thisHasCopyPattern), otherHasCopyPattern, copyPatternEq);
-
-        // Date comparison
-        String dateEq = (thisDate != null && otherDate != null && thisDate.equals(otherDate)) ? " [EQUAL]" : "";
-        logger.info("[QUALITY] Date Taken      : {} vs  {}{}",
-                String.format("%-20s", thisDateStr), otherDateStr, dateEq);
-
-        // Resolution comparison
-        String resEq = (thisQuality == otherQuality) ? " [EQUAL]" : "";
-        logger.info("[QUALITY] Resolution      : {} vs  {}{}",
-                String.format("%-20s", thisRes), otherRes, resEq);
-
-        // File size comparison
-        String sizeEq = (this.fileSize != null && other.fileSize != null && this.fileSize.equals(other.fileSize))
-                ? " [EQUAL]"
-                : "";
-        logger.info("[QUALITY] File Size       : {} vs  {}{}",
-                String.format("%-20s", thisSize), otherSize, sizeEq);
-
-        logger.info("[QUALITY] ------------------------------------------------------------------------");
-
-        // Determine winner and reason
+        // Determine winner and reason with step-by-step logging
         boolean result;
         String reason;
         String winnerPath;
 
-        // Apply comparison logic
-        if (thisHasCopyPattern && !otherHasCopyPattern) {
-            result = false;
-            reason = "File 2 has cleaner filename (no copy pattern)";
-            winnerPath = file2Path;
-        } else if (!thisHasCopyPattern && otherHasCopyPattern) {
-            result = true;
-            reason = "File 1 has cleaner filename (no copy pattern)";
-            winnerPath = file1Path;
-        } else if (thisDate != null && otherDate != null) {
+        // Step 1: Check Date FIRST - the file with the older timestamp is the original
+        // This is more reliable than filename patterns which can be misleading
+        log.info("[QUALITY] STEP 1 - Date Comparison (Primary Indicator)");
+        log.info("[QUALITY]   File 1 Dates:");
+        log.info("[QUALITY]     - Date Taken   : {}", thisDateTakenStr);
+        log.info("[QUALITY]     - Date Created : {}", thisDateCreatedStr);
+        log.info("[QUALITY]     - Date Modified: {}", thisDateModifiedStr);
+        log.info("[QUALITY]     - EARLIEST     : {}", thisDateStr);
+        log.info("[QUALITY]   File 2 Dates:");
+        log.info("[QUALITY]     - Date Taken   : {}", otherDateTakenStr);
+        log.info("[QUALITY]     - Date Created : {}", otherDateCreatedStr);
+        log.info("[QUALITY]     - Date Modified: {}", otherDateModifiedStr);
+        log.info("[QUALITY]     - EARLIEST     : {}", otherDateStr);
+
+        if (thisDate != null && otherDate != null) {
             if (thisDate.before(otherDate)) {
                 result = true;
                 reason = "File 1 is older (original by date)";
                 winnerPath = file1Path;
+                log.info("[QUALITY]   >> DECIDED: File 1 wins (older date)");
             } else if (thisDate.after(otherDate)) {
                 result = false;
                 reason = "File 2 is older (original by date)";
                 winnerPath = file2Path;
+                log.info("[QUALITY]   >> DECIDED: File 2 wins (older date)");
             } else {
-                // Dates are equal, check resolution
-                result = thisQuality > otherQuality;
+                log.info("[QUALITY]   >> TIE - same earliest dates, checking next...");
+
+                // Step 2: Check Resolution
+                log.info("[QUALITY] STEP 2 - Resolution");
+                log.info("[QUALITY]   File 1: {}    File 2: {}", thisRes, otherRes);
+
                 if (thisQuality > otherQuality) {
+                    result = true;
                     reason = "File 1 has higher resolution";
                     winnerPath = file1Path;
+                    log.info("[QUALITY]   >> DECIDED: File 1 wins (higher resolution)");
                 } else if (otherQuality > thisQuality) {
+                    result = false;
                     reason = "File 2 has higher resolution";
                     winnerPath = file2Path;
+                    log.info("[QUALITY]   >> DECIDED: File 2 wins (higher resolution)");
                 } else {
-                    reason = "Files are equivalent, defaulting to File 1";
-                    winnerPath = file1Path;
+                    log.info("[QUALITY]   >> TIE - same resolution, checking next...");
+
+                    // Step 3: Check File Size
+                    log.info("[QUALITY] STEP 3 - File Size");
+                    log.info("[QUALITY]   File 1: {}    File 2: {}", thisSize, otherSize);
+
+                    if (this.fileSize != null && other.fileSize != null) {
+                        if (this.fileSize > other.fileSize) {
+                            result = true;
+                            reason = "File 1 has larger file size";
+                            winnerPath = file1Path;
+                            log.info("[QUALITY]   >> DECIDED: File 1 wins (larger file size)");
+                        } else if (this.fileSize < other.fileSize) {
+                            result = false;
+                            reason = "File 2 has larger file size";
+                            winnerPath = file2Path;
+                            log.info("[QUALITY]   >> DECIDED: File 2 wins (larger file size)");
+                        } else {
+                            log.info("[QUALITY]   >> TIE - same file size, checking next...");
+
+                            // Step 4: Check Copy Pattern (FINAL TIEBREAKER)
+                            // Only use filename pattern when everything else is equal
+                            log.info("[QUALITY] STEP 4 - Copy Pattern (Final Tiebreaker)");
+                            log.info("[QUALITY]   File 1: {}    File 2: {}", thisHasCopyPattern, otherHasCopyPattern);
+
+                            if (thisHasCopyPattern && !otherHasCopyPattern) {
+                                result = false;
+                                reason = "File 2 has cleaner filename (no copy pattern) - used as tiebreaker";
+                                winnerPath = file2Path;
+                                log.info("[QUALITY]   >> DECIDED: File 2 wins (no copy pattern - tiebreaker)");
+                            } else if (!thisHasCopyPattern && otherHasCopyPattern) {
+                                result = true;
+                                reason = "File 1 has cleaner filename (no copy pattern) - used as tiebreaker";
+                                winnerPath = file1Path;
+                                log.info("[QUALITY]   >> DECIDED: File 1 wins (no copy pattern - tiebreaker)");
+                            } else {
+                                // Absolute tie - both files are completely identical
+                                result = true;
+                                reason = "Files are 100% equivalent - defaulting to File 1 (keep first encountered)";
+                                winnerPath = file1Path;
+                                log.info("[QUALITY]   >> COMPLETE TIE - all parameters equal, defaulting to File 1");
+                            }
+                        }
+                    } else {
+                        result = true;
+                        reason = "File size unavailable - defaulting to File 1";
+                        winnerPath = file1Path;
+                        log.info("[QUALITY]   >> WARNING: File size unavailable, defaulting to File 1");
+                    }
                 }
             }
         } else {
-            // No date info, use resolution
-            result = thisQuality > otherQuality;
+            // No date info available - use resolution/size/pattern
+            log.info("[QUALITY]   >> Date unavailable for one or both files");
+
+            // Step 2: Check Resolution
+            log.info("[QUALITY] STEP 2 - Resolution");
+            log.info("[QUALITY]   File 1: {}    File 2: {}", thisRes, otherRes);
+
             if (thisQuality > otherQuality) {
+                result = true;
                 reason = "File 1 has higher resolution";
                 winnerPath = file1Path;
+                log.info("[QUALITY]   >> DECIDED: File 1 wins (higher resolution)");
             } else if (otherQuality > thisQuality) {
+                result = false;
                 reason = "File 2 has higher resolution";
                 winnerPath = file2Path;
+                log.info("[QUALITY]   >> DECIDED: File 2 wins (higher resolution)");
             } else {
-                reason = "Files are equivalent, defaulting to File 1";
-                winnerPath = file1Path;
+                log.info("[QUALITY]   >> TIE - same resolution, checking next...");
+
+                // Step 3: Check File Size
+                log.info("[QUALITY] STEP 3 - File Size");
+                log.info("[QUALITY]   File 1: {}    File 2: {}", thisSize, otherSize);
+
+                if (this.fileSize != null && other.fileSize != null) {
+                    if (this.fileSize > other.fileSize) {
+                        result = true;
+                        reason = "File 1 has larger file size";
+                        winnerPath = file1Path;
+                        log.info("[QUALITY]   >> DECIDED: File 1 wins (larger file size)");
+                    } else if (this.fileSize < other.fileSize) {
+                        result = false;
+                        reason = "File 2 has larger file size";
+                        winnerPath = file2Path;
+                        log.info("[QUALITY]   >> DECIDED: File 2 wins (larger file size)");
+                    } else {
+                        log.info("[QUALITY]   >> TIE - same file size, checking next...");
+
+                        // Step 4: Check Copy Pattern (FINAL TIEBREAKER)
+                        log.info("[QUALITY] STEP 4 - Copy Pattern (Final Tiebreaker)");
+                        log.info("[QUALITY]   File 1: {}    File 2: {}", thisHasCopyPattern, otherHasCopyPattern);
+
+                        if (thisHasCopyPattern && !otherHasCopyPattern) {
+                            result = false;
+                            reason = "File 2 has cleaner filename (no copy pattern) - used as tiebreaker";
+                            winnerPath = file2Path;
+                            log.info("[QUALITY]   >> DECIDED: File 2 wins (no copy pattern - tiebreaker)");
+                        } else if (!thisHasCopyPattern && otherHasCopyPattern) {
+                            result = true;
+                            reason = "File 1 has cleaner filename (no copy pattern) - used as tiebreaker";
+                            winnerPath = file1Path;
+                            log.info("[QUALITY]   >> DECIDED: File 1 wins (no copy pattern - tiebreaker)");
+                        } else {
+                            result = true;
+                            reason = "Files are equivalent - defaulting to File 1";
+                            winnerPath = file1Path;
+                            log.info("[QUALITY]   >> COMPLETE TIE - defaulting to File 1");
+                        }
+                    }
+                } else {
+                    result = true;
+                    reason = "File size unavailable - defaulting to File 1";
+                    winnerPath = file1Path;
+                    log.info("[QUALITY]   >> WARNING: File size unavailable, defaulting to File 1");
+                }
             }
         }
 
-        logger.info("[QUALITY] WINNER: {} - Reason: {}", winnerPath, reason);
-        logger.info("[QUALITY] ========================================================================");
+        log.info("[QUALITY] ------------------------------------------------------------------------");
+        log.info("[QUALITY]  WINNER: {}", winnerPath);
+        log.info("[QUALITY]  REASON: {}", reason);
+        log.info("[QUALITY] ========================================================================");
 
         return result;
     }
@@ -862,6 +884,20 @@ public class ExifData {
         if (bytes < 1024 * 1024 * 1024)
             return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
         return String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+    }
+
+    /**
+     * Get image width (for resolution comparison)
+     */
+    public Integer getWidth() {
+        return imageWidth;
+    }
+
+    /**
+     * Get image height (for resolution comparison)
+     */
+    public Integer getHeight() {
+        return imageHeight;
     }
 
 }

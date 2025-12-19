@@ -3,11 +3,15 @@ package com.media.sort.batch.writer;
 import com.media.sort.MediaSortingProperties;
 import com.media.sort.batch.dto.MediaFileDTO;
 import com.media.sort.model.ExifData;
+
 import com.media.sort.service.MediaFileService;
+import com.media.sort.service.ReportingService;
+import com.media.sort.service.TransactionLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemWriter;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.File;
 import java.text.ParseException;
@@ -28,6 +32,14 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
     private final Map<String, ExifData> fileHashMap;
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
     private final com.media.sort.service.PerceptualHashService perceptualHashService;
+
+    @Autowired(required = false)
+    @SuppressWarnings("unused") // Will be used to log operations for undo capability
+    private TransactionLog transactionLog;
+
+    @Autowired(required = false)
+    @SuppressWarnings("unused") // Will be used to track statistics and generate reports
+    private ReportingService reportingService;
 
     private File duplicateImageDirectory;
     private File originalImageDirectory;
@@ -64,15 +76,28 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
 
     @Override
     public void write(Chunk<? extends MediaFileDTO> chunk) throws Exception {
+        // Start transaction session and report if not already started
+        if (transactionLog != null && !transactionLog.hasActiveSession()) {
+            transactionLog.startSession(sourceFolder);
+        }
+        if (reportingService != null && reportingService.getCurrentReport() == null) {
+            reportingService.startReport();
+        }
+
         for (MediaFileDTO dto : chunk) {
             moveMediaFile(dto);
+        }
+
+        // Auto-save transaction log periodically (every 10 operations by default)
+        if (transactionLog != null) {
+            transactionLog.saveSession();
         }
     }
 
     private void moveMediaFile(MediaFileDTO dto) {
-        String fileHash = dto.getFileHash();
-        ExifData fileData = dto.getExifData();
-        boolean isImage = dto.getMediaType() == MediaFileDTO.MediaType.IMAGE;
+        String fileHash = dto.fileHash();
+        ExifData fileData = dto.exifData();
+        boolean isImage = dto.mediaType() == MediaFileDTO.MediaType.IMAGE;
         String folderDate = fileData.getFolderDate();
 
         // Don't use fallback date - let MediaFileService handle missing dates

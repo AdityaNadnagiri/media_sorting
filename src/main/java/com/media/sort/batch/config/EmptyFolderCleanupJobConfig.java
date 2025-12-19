@@ -31,6 +31,7 @@ public class EmptyFolderCleanupJobConfig {
      * Empty Folder Cleanup Job
      */
     @Bean
+    @SuppressWarnings("null")
     public Job emptyFolderCleanupJob(JobRepository jobRepository,
             Step cleanupEmptyFoldersStep) {
         return new JobBuilder("emptyFolderCleanupJob", jobRepository)
@@ -42,6 +43,7 @@ public class EmptyFolderCleanupJobConfig {
      * Step to cleanup empty folders
      */
     @Bean
+    @SuppressWarnings("null")
     public Step cleanupEmptyFoldersStep(JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             EmptyFolderReader emptyFolderReader,

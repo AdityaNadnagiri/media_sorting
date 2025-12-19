@@ -6,37 +6,46 @@ import org.springframework.batch.item.ItemReader;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Custom ItemReader for reading media files from a source folder.
- * Recursively scans the folder and returns media files one at a time.
+ * ItemReader for media files.
+ * Recursively scans a source folder for image and video files.
+ * Extensions are loaded from properties via constructor injection.
  */
 public class MediaFileReader implements ItemReader<File> {
 
     private static final Logger logger = LoggerFactory.getLogger(MediaFileReader.class);
 
-    // Static extension sets for file type detection
-    private static final java.util.Set<String> IMAGE_EXTENSIONS = new java.util.HashSet<>(java.util.Arrays.asList(
-            "arw", "jpg", "jpeg", "gif", "bmp", "ico", "tif", "tiff", "raw", "indd",
-            "ai", "eps", "pdf", "heic", "cr2", "nrw", "k25", "png", "webp"));
-
-    private static final java.util.Set<String> VIDEO_EXTENSIONS = new java.util.HashSet<>(java.util.Arrays.asList(
-            "mp4", "mkv", "flv", "avi", "mov", "wmv", "rm", "mpg", "mpeg",
-            "3gp", "vob", "m4v", "3g2", "divx", "xvid", "webm"));
-
     private final String sourceFolder;
+    private final Set<String> imageExtensions;
+    private final Set<String> videoExtensions;
     private List<File> mediaFiles;
     private int currentIndex = 0;
 
-    public MediaFileReader(String sourceFolder) {
+    public MediaFileReader(String sourceFolder, String imageExtensionsConfig, String videoExtensionsConfig) {
         this.sourceFolder = sourceFolder;
+        this.imageExtensions = parseExtensions(imageExtensionsConfig);
+        this.videoExtensions = parseExtensions(videoExtensionsConfig);
         this.mediaFiles = new ArrayList<>();
         scanFolder();
     }
 
     /**
-     * Recursively scan the source folder for media files
+     * Parse comma-separated extension list
+     */
+    private Set<String> parseExtensions(String extensionsConfig) {
+        if (extensionsConfig == null || extensionsConfig.isEmpty()) {
+            return new HashSet<>();
+        }
+        return new HashSet<>(Arrays.asList(extensionsConfig.split(",")));
+    }
+
+    /**
+     * Scan source folder for media files
      */
     private void scanFolder() {
         logger.info("Scanning folder for media files: {}", sourceFolder);
@@ -64,26 +73,23 @@ public class MediaFileReader implements ItemReader<File> {
             if (file.isFile()) {
                 // Check if file is a supported media type
                 String extension = getFileExtension(file.getName());
-                if (IMAGE_EXTENSIONS.contains(extension) ||
-                        VIDEO_EXTENSIONS.contains(extension)) {
+                if (imageExtensions.contains(extension) || videoExtensions.contains(extension)) {
                     mediaFiles.add(file);
                 }
             } else if (file.isDirectory()) {
-                // Skip if this directory or any parent is an output directory
+                // Skip output directories
                 if (isInsideOutputDirectory(file)) {
-                    logger.debug("Skipping directory inside output folder: {}", file.getAbsolutePath());
-                    continue; // Don't process anything inside output directories
+                    logger.debug("Skipping output directory: {}", file.getAbsolutePath());
+                    continue;
                 }
-
-                // Recursively scan other directories
+                // Recursively scan subdirectories
                 scanDirectory(file);
             }
         }
     }
 
     /**
-     * Check if a directory is inside any output directory (Images, Videos, others,
-     * EmptyFolder)
+     * Check if a directory is inside any output directory
      */
     private boolean isInsideOutputDirectory(File directory) {
         File current = directory;
@@ -92,20 +98,15 @@ public class MediaFileReader implements ItemReader<File> {
         while (current != null && !current.equals(sourceDir)) {
             String dirName = current.getName();
 
-            // Check if this is an output directory
             if (dirName.equals("Images") || dirName.equals("Videos") ||
                     dirName.equals("EmptyFolder") || dirName.equals("others")) {
-
-                // Verify it's actually under the source folder
                 File parent = current.getParentFile();
                 if (parent != null && parent.equals(sourceDir)) {
-                    return true; // This directory is inside an output folder
+                    return true;
                 }
             }
-
             current = current.getParentFile();
         }
-
         return false;
     }
 

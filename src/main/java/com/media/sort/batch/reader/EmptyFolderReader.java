@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.item.ItemReader;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -51,6 +52,13 @@ public class EmptyFolderReader implements ItemReader<File> {
      * Recursively find empty folders
      */
     private void findEmptyFolders(File directory) {
+        // Skip the EmptyFolder directory and anything inside it to avoid infinite loop
+        Path emptyFolderPath = new File(targetFolder, "EmptyFolder").toPath();
+        if (directory.toPath().startsWith(emptyFolderPath)) {
+            logger.debug("Skipping EmptyFolder or its subdirectory: {}", directory.getAbsolutePath());
+            return;
+        }
+
         File[] files = directory.listFiles();
         if (files == null) {
             return;

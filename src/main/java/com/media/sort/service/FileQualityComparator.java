@@ -1,6 +1,10 @@
 package com.media.sort.service;
 
 import com.media.sort.model.ExifData;
+
+import lombok.Getter;
+import lombok.Setter;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -21,10 +25,14 @@ public class FileQualityComparator {
      * Returns true if file1 is higher quality than file2.
      * 
      * Comparison criteria (in order of priority):
-     * 1. File size (larger is better for media files)
+     * 0. **SPECIAL RULE**: If a file has BOTH higher resolution AND larger file
+     * size,
+     * prioritize it as original regardless of dates (relaxes date rules)
+     * 1. Image resolution (higher is better - enables future editing)
      * 2. EXIF date taken (older is original)
      * 3. File modified date (older is original)
      * 4. EXIF date created (older is original)
+     * 5. File size (larger is better as tiebreaker)
      * 
      * @param file1 First file to compare
      * @param file2 Second file to compare
@@ -34,16 +42,74 @@ public class FileQualityComparator {
      */
     public boolean isFile1HigherQuality(File file1, File file2, ExifData exif1, ExifData exif2) {
 
-        // 1. Compare file sizes - larger file is typically higher quality
+        // **SPECIAL PRIORITY RULE**: If BOTH higher resolution AND larger file size,
+        // prioritize as original regardless of dates
+        // This handles cases like resized copies where higher quality is clearly
+        // identifiable
+        boolean hasResolutionAdvantage = false;
+        boolean hasFileSizeAdvantage = false;
+
+        // Check resolution advantage
+        if (exif1 != null && exif2 != null) {
+            Integer width1 = exif1.getWidth();
+            Integer height1 = exif1.getHeight();
+            Integer width2 = exif2.getWidth();
+            Integer height2 = exif2.getHeight();
+
+            if (width1 != null && height1 != null && width2 != null && height2 != null) {
+                long pixels1 = (long) width1 * height1;
+                long pixels2 = (long) width2 * height2;
+
+                if (pixels1 != pixels2) {
+                    hasResolutionAdvantage = pixels1 > pixels2;
+                    logger.debug("Resolution difference: {}x{} ({} MP) vs {}x{} ({} MP)",
+                            width1, height1, pixels1 / 1_000_000.0,
+                            width2, height2, pixels2 / 1_000_000.0);
+                }
+            }
+        }
+
+        // Check file size advantage
         long size1 = file1.length();
         long size2 = file2.length();
 
         if (size1 != size2) {
-            double sizeDifference = Math.abs(size1 - size2) / (double) Math.max(size1, size2);
-            // If size difference is more than 5%, use size as determining factor
-            if (sizeDifference > 0.05) {
-                logger.debug("File size difference: {} vs {} bytes", size1, size2);
-                return size1 > size2;
+            hasFileSizeAdvantage = size1 > size2;
+            logger.debug("File size difference: {} vs {} bytes", size1, size2);
+        }
+
+        // If BOTH resolution AND file size are higher, this file is clearly the
+        // original
+        // Override all date-based rules
+        if (hasResolutionAdvantage && hasFileSizeAdvantage) {
+            logger.info(
+                    "File1 has BOTH higher resolution AND larger file size - prioritizing as original (relaxing date rules)");
+            return true;
+        } else if (!hasResolutionAdvantage && !hasFileSizeAdvantage &&
+                (exif1 != null && exif2 != null) &&
+                (exif1.getWidth() != null && exif2.getWidth() != null)) {
+            // File2 has both advantages
+            logger.info(
+                    "File2 has BOTH higher resolution AND larger file size - prioritizing as original (relaxing date rules)");
+            return false;
+        }
+
+        // 1. **PRIORITY**: Compare image resolution if only one file has advantage
+        // Higher resolution is ALWAYS better when sizes differ
+        // Even if file size is smaller, higher resolution enables better editing
+        if (exif1 != null && exif2 != null) {
+            Integer width1 = exif1.getWidth();
+            Integer height1 = exif1.getHeight();
+            Integer width2 = exif2.getWidth();
+            Integer height2 = exif2.getHeight();
+
+            if (width1 != null && height1 != null && width2 != null && height2 != null) {
+                long pixels1 = (long) width1 * height1;
+                long pixels2 = (long) width2 * height2;
+
+                if (pixels1 != pixels2) {
+                    return pixels1 > pixels2; // Higher resolution wins
+                }
             }
         }
 
@@ -85,7 +151,13 @@ public class FileQualityComparator {
             }
         }
 
-        // 5. If all else is equal, prefer file1 (arbitrary but consistent)
+        // 5. FINAL TIEBREAKER: Compare file sizes (larger is better)
+        if (size1 != size2) {
+            logger.debug("File size difference (tiebreaker): {} vs {} bytes", size1, size2);
+            return size1 > size2;
+        }
+
+        // 6. If all else is equal, prefer file1 (arbitrary but consistent)
         logger.debug("Files are equivalent in quality, defaulting to file1");
         return true;
     }
@@ -115,51 +187,13 @@ public class FileQualityComparator {
     /**
      * Result of file quality comparison
      */
+    @Setter
+    @Getter
     public static class ComparisonResult {
         private File originalFile;
         private File duplicateFile;
         private ExifData originalExif;
         private ExifData duplicateExif;
         private boolean file1IsOriginal;
-
-        public File getOriginalFile() {
-            return originalFile;
-        }
-
-        public void setOriginalFile(File originalFile) {
-            this.originalFile = originalFile;
-        }
-
-        public File getDuplicateFile() {
-            return duplicateFile;
-        }
-
-        public void setDuplicateFile(File duplicateFile) {
-            this.duplicateFile = duplicateFile;
-        }
-
-        public ExifData getOriginalExif() {
-            return originalExif;
-        }
-
-        public void setOriginalExif(ExifData originalExif) {
-            this.originalExif = originalExif;
-        }
-
-        public ExifData getDuplicateExif() {
-            return duplicateExif;
-        }
-
-        public void setDuplicateExif(ExifData duplicateExif) {
-            this.duplicateExif = duplicateExif;
-        }
-
-        public boolean isFile1IsOriginal() {
-            return file1IsOriginal;
-        }
-
-        public void setFile1IsOriginal(boolean file1IsOriginal) {
-            this.file1IsOriginal = file1IsOriginal;
-        }
     }
 }

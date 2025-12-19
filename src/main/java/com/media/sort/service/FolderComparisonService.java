@@ -1,6 +1,10 @@
 package com.media.sort.service;
 
 import com.media.sort.MediaSortingProperties;
+
+import lombok.Getter;
+import lombok.Setter;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -206,6 +210,8 @@ public class FolderComparisonService {
     /**
      * Result class to hold comparison statistics
      */
+    @Setter
+    @Getter
     public static class ComparisonResult {
         private String status;
         private String message;
@@ -213,48 +219,8 @@ public class FolderComparisonService {
         private int folder2ProcessedFiles = 0;
         private int movedFiles = 0;
 
-        public String getStatus() {
-            return status;
-        }
-
-        public void setStatus(String status) {
-            this.status = status;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
-        }
-
-        public int getFolder1ProcessedFiles() {
-            return folder1ProcessedFiles;
-        }
-
-        public void setFolder1ProcessedFiles(int folder1ProcessedFiles) {
-            this.folder1ProcessedFiles = folder1ProcessedFiles;
-        }
-
         public synchronized void incrementFolder1ProcessedFiles() {
             this.folder1ProcessedFiles++;
-        }
-
-        public int getFolder2ProcessedFiles() {
-            return folder2ProcessedFiles;
-        }
-
-        public void setFolder2ProcessedFiles(int folder2ProcessedFiles) {
-            this.folder2ProcessedFiles = folder2ProcessedFiles;
-        }
-
-        public int getMovedFiles() {
-            return movedFiles;
-        }
-
-        public void setMovedFiles(int movedFiles) {
-            this.movedFiles = movedFiles;
         }
 
         public synchronized void incrementMovedFiles() {

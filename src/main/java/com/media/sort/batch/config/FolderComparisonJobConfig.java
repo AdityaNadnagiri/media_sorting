@@ -11,6 +11,7 @@ import com.media.sort.batch.writer.HashMapWriter;
 import com.media.sort.service.FileQualityComparator;
 
 import com.media.sort.service.MediaFileService;
+import com.media.sort.service.PerceptualHashService;
 import com.media.sort.service.ProgressTrackerFactory;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
@@ -30,12 +31,14 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Enhanced configuration for Folder Comparison Batch Job with quality
  * detection.
+ * Now includes perceptual hashing, burst detection, and RAW+JPEG pairing.
  * This job compares two folders, determines which files are higher quality,
  * and organizes them accordingly (originals in main folder, duplicates in
  * Duplicates subfolder).
  * 
  * Job flow:
  * 1. Build hash map from folder2 (secondary/reference folder) with EXIF data
+ * and perceptual hash
  * 2. Compare folder1 files against hash map, determine quality, and move files
  */
 @Configuration
@@ -53,6 +56,9 @@ public class FolderComparisonJobConfig {
     @Autowired
     private ProgressTrackerFactory progressTrackerFactory;
 
+    @Autowired
+    private PerceptualHashService perceptualHashService;
+
     /**
      * Shared hash map for storing file hashes from folder2 with metadata
      */
@@ -65,6 +71,7 @@ public class FolderComparisonJobConfig {
      * Folder Comparison Job
      */
     @Bean
+    @SuppressWarnings("null")
     public Job folderComparisonJob(JobRepository jobRepository,
             Step buildHashMapStep,
             Step compareFoldersStep) {
@@ -75,7 +82,8 @@ public class FolderComparisonJobConfig {
     }
 
     /**
-     * Step 1: Build hash map from folder2 (secondary folder) with EXIF data
+     * Step 1: Build hash map from folder2 (secondary folder) with EXIF data and
+     * perceptual hash
      */
     @Bean
     public Step buildHashMapStep(JobRepository jobRepository,
@@ -95,6 +103,7 @@ public class FolderComparisonJobConfig {
      * Step 2: Compare folder1 files, determine quality, and move files
      */
     @Bean
+    @SuppressWarnings("null")
     public Step compareFoldersStep(JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             FolderFileReader folder1Reader,
@@ -129,12 +138,13 @@ public class FolderComparisonJobConfig {
     }
 
     /**
-     * Processor to calculate file hash and extract EXIF data
+     * Processor to calculate file hash, extract EXIF data, and compute perceptual
+     * hash
      */
     @Bean
     @StepScope
     public FileHashProcessor fileHashProcessor() {
-        return new FileHashProcessor(mediaFileService, progressTrackerFactory);
+        return new FileHashProcessor(mediaFileService, progressTrackerFactory, perceptualHashService);
     }
 
     /**
@@ -147,7 +157,8 @@ public class FolderComparisonJobConfig {
     }
 
     /**
-     * Processor to identify duplicates and determine quality
+     * Enhanced processor to identify duplicates, determine quality,
+     * with burst detection, RAW+JPEG pairing, and perceptual hashing support
      */
     @Bean
     @StepScope
@@ -157,7 +168,8 @@ public class FolderComparisonJobConfig {
                 mediaFileService,
                 qualityComparator,
                 progressTrackerFactory,
-                folderComparisonHashMap);
+                folderComparisonHashMap,
+                perceptualHashService);
     }
 
     /**

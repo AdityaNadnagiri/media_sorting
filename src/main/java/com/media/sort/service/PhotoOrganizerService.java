@@ -39,6 +39,9 @@ public class PhotoOrganizerService {
     @Autowired
     private ProgressTrackerFactory progressTrackerFactory;
 
+    @Autowired
+    private FileQualityComparator fileQualityComparator;
+
     private File emptyFolderDirectory;
     private File duplicateImageDirectory;
     private File originalImageDirectory;
@@ -134,29 +137,57 @@ public class PhotoOrganizerService {
             // File with the same hash - it's a duplicate
             ExifData originalFileData = fileHash.get(key);
             folderDate = getNewFolderDateForDuplicates(fileData, originalFileData);
-            boolean isAfter = fileData.isAfter(originalFileData);
+
+            // Use FileQualityComparator to determine which is higher quality
+            // This applies all priority rules including the special rule:
+            // "Both higher resolution AND larger file size overrides date rules"
+            File currentFile = fileData.getFile();
+            File originalFile = originalFileData.getFile();
+
+            // Log comparison details
+            logger.info("Duplicate detected! Hash: {}", key);
+            logger.info("  Current:  {} - Size: {} bytes, Resolution: {}x{}, Date: {}",
+                    currentFile.getName(),
+                    currentFile.length(),
+                    fileData.getWidth() != null ? fileData.getWidth() : "N/A",
+                    fileData.getHeight() != null ? fileData.getHeight() : "N/A",
+                    fileData.getDateTaken());
+            logger.info("  Original: {} - Size: {} bytes, Resolution: {}x{}, Date: {}",
+                    originalFile.getName(),
+                    originalFile.length(),
+                    originalFileData.getWidth() != null ? originalFileData.getWidth() : "N/A",
+                    originalFileData.getHeight() != null ? originalFileData.getHeight() : "N/A",
+                    originalFileData.getDateTaken());
+
+            boolean currentIsHigherQuality = fileQualityComparator.isFile1HigherQuality(
+                    currentFile, originalFile, fileData, originalFileData);
 
             if (isImage) {
-                logger.info("Duplicate image detected! Hash: {}. Current: {} ({}), Original: {} ({})",
-                        key, fileData.getFile().getName(), fileData.getFolderDate(),
-                        originalFileData.getFile().getName(), originalFileData.getFolderDate());
-
-                if (isAfter) {
+                if (!currentIsHigherQuality) {
+                    // Current is lower quality - move to duplicates
+                    logger.info("Decision: Keeping original {} (higher quality), moving current {} to Duplicates",
+                            originalFile.getName(), currentFile.getName());
                     mediaFileService.executeMove(fileData,
                             new File(duplicateImageDirectory, originalFileData.getFolderDate()));
                 } else {
+                    // Current is higher quality - swap: current becomes original
+                    logger.info("Decision: Current {} is higher quality, moving previous original {} to Duplicates",
+                            currentFile.getName(), originalFile.getName());
                     mediaFileService.executeMove(originalFileData, new File(duplicateImageDirectory, folderDate));
                     mediaFileService.executeMove(fileData, new File(originalImageDirectory, folderDate));
                     fileHash.put(key, fileData);
                 }
             } else {
-                logger.info("Duplicate video detected! Hash: {}. Current: {} ({}), Original: {} ({})",
-                        key, fileData.getFile().getName(), fileData.getFolderDate(),
-                        originalFileData.getFile().getName(), originalFileData.getFolderDate());
-                if (isAfter) {
+                if (!currentIsHigherQuality) {
+                    // Current is lower quality - move to duplicates
+                    logger.info("Decision: Keeping original {} (higher quality), moving current {} to Duplicates",
+                            originalFile.getName(), currentFile.getName());
                     mediaFileService.executeMove(fileData,
                             new File(duplicateVideoDirectory, originalFileData.getFolderDate()));
                 } else {
+                    // Current is higher quality - swap: current becomes original
+                    logger.info("Decision: Current {} is higher quality, moving previous original {} to Duplicates",
+                            currentFile.getName(), originalFile.getName());
                     mediaFileService.executeMove(originalFileData, new File(duplicateVideoDirectory, folderDate));
                     mediaFileService.executeMove(fileData, new File(originalVideoDirectory, folderDate));
                     fileHash.put(key, fileData);

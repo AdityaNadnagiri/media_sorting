@@ -28,6 +28,9 @@ public class MediaFileService {
     @Autowired
     private ProgressTrackerFactory progressTrackerFactory;
 
+    @Autowired
+    private FileQualityComparator fileQualityComparator;
+
     public MediaFileService() {
         // mediaErrorTracker will be initialized through initializeTracker method
     }
@@ -156,18 +159,60 @@ public class MediaFileService {
                     if (cleanName && Files.exists(destinationPath)) {
                         logger.info("Conflict detected: {} already exists in Original folder", cleanFileName);
 
-                        // Load the existing file's metadata to compare dates
+                        // Load the existing file's metadata to compare quality
                         File existingFile = destinationPath.toFile();
                         ExifData existingFileData = new ExifData(existingFile);
 
-                        // Compare dates to determine which is the true original
-                        boolean currentIsNewer = fileData.isAfter(existingFileData);
+                        // Initialize EXIF data dependencies to ensure proper metadata extraction
+                        if (progressTrackerFactory != null) {
+                            existingFileData.setProgressTrackers(
+                                    progressTrackerFactory.getImageErrorTracker(),
+                                    progressTrackerFactory.getFileComparisonTracker(),
+                                    progressTrackerFactory.getFileComparisonTracker());
+                        }
 
-                        if (currentIsNewer) {
-                            // Current file is NEWER - existing file is the true original
+                        // Extract image dimensions directly from the file (EXIF may not contain
+                        // resolution)
+                        if (existingFileData.isImage()) {
+                            try {
+                                java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(existingFile);
+                                if (img != null) {
+                                    existingFileData.setImageWidth(img.getWidth());
+                                    existingFileData.setImageHeight(img.getHeight());
+                                }
+                            } catch (Exception e) {
+                                logger.warn("Failed to extract dimensions for existing file: {}",
+                                        existingFile.getName(), e);
+                            }
+                        }
+
+                        // Log file comparison details
+                        logger.info("Comparing files to determine original:");
+                        logger.info("  Current:  {} - Size: {} bytes, Resolution: {}x{}, Date: {}",
+                                currentFile.getName(),
+                                currentFile.length(),
+                                fileData.getWidth() != null ? fileData.getWidth() : "N/A",
+                                fileData.getHeight() != null ? fileData.getHeight() : "N/A",
+                                fileData.getDateTaken());
+                        logger.info("  Existing: {} - Size: {} bytes, Resolution: {}x{}, Date: {}",
+                                existingFile.getName(),
+                                existingFile.length(),
+                                existingFileData.getWidth() != null ? existingFileData.getWidth() : "N/A",
+                                existingFileData.getHeight() != null ? existingFileData.getHeight() : "N/A",
+                                existingFileData.getDateTaken());
+
+                        // Use FileQualityComparator to determine which is higher quality
+                        // This applies all priority rules including the new special rule:
+                        // "Both higher resolution AND larger file size overrides date rules"
+                        boolean currentIsHigherQuality = fileQualityComparator.isFile1HigherQuality(
+                                currentFile, existingFile, fileData, existingFileData);
+
+                        if (!currentIsHigherQuality) {
+                            // Existing file is higher quality - keep it as original
                             // Current file should go to duplicates
-                            logger.info("Current file {} is newer, keeping existing {} as Original (older)",
-                                    currentFile.getName(), existingFile.getName());
+                            logger.info("Decision: Existing file {} is higher quality, keeping as Original",
+                                    existingFile.getName());
+                            logger.info("Moving current file {} to Duplicates", currentFile.getName());
 
                             // Move current file to Duplicates
                             File duplicateFolder = determineDuplicateFolder(fileData, destinationFolder);
@@ -175,10 +220,11 @@ public class MediaFileService {
                             destinationPath = duplicateFolder.toPath().resolve(cleanFileName);
                             destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
                         } else {
-                            // Current file is OLDER - it's the true original
+                            // Current file is higher quality - it's the true original
                             // Move existing file to Duplicates first
-                            logger.info("Current file {} is older (true original), moving existing {} to Duplicates",
-                                    currentFile.getName(), existingFile.getName());
+                            logger.info("Decision: Current file {} is higher quality (true original)",
+                                    currentFile.getName());
+                            logger.info("Moving existing file {} to Duplicates", existingFile.getName());
 
                             // Determine duplicate folder path
                             File duplicateFolder = determineDuplicateFolder(fileData, destinationFolder);

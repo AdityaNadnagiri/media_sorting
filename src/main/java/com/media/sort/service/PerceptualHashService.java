@@ -2,6 +2,7 @@ package com.media.sort.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
@@ -25,16 +26,17 @@ public class PerceptualHashService {
 
     private static final Logger logger = LoggerFactory.getLogger(PerceptualHashService.class);
 
-    // Hash size (32x32 is a good balance of accuracy and speed)
-    private static final int HASH_SIZE = 32;
+    @Value("${media.perceptual-hash.hash-size:32}")
+    private int hashSize;
 
-    // Smaller image size for faster DCT computation
-    private static final int SMALL_SIZE = 32;
+    @Value("${media.perceptual-hash.small-size:32}")
+    private int smallSize;
 
-    // Hamming distance threshold for similarity
-    // Lower = more strict, Higher = more lenient
-    // Typical good value: 10-15 for different resolutions
-    private static final int SIMILARITY_THRESHOLD = 12;
+    @Value("${media.perceptual-hash.hamming-threshold:12}")
+    private int similarityThreshold;
+
+    @Value("${media.perceptual-hash.dct-size:8}")
+    private int dctSize;
 
     /**
      * Compute perceptual hash for an image file
@@ -47,8 +49,8 @@ public class PerceptualHashService {
                 return null;
             }
 
-            // Step 1: Reduce size (32x32)
-            BufferedImage smallImage = resize(image, SMALL_SIZE, SMALL_SIZE);
+            // Step 1: Reduce size
+            BufferedImage smallImage = resize(image, smallSize, smallSize);
 
             // Step 2: Convert to grayscale
             double[][] grayPixels = toGrayscale(smallImage);
@@ -56,8 +58,8 @@ public class PerceptualHashService {
             // Step 3: Compute DCT
             double[][] dctVals = applyDCT(grayPixels);
 
-            // Step 4: Reduce DCT (top-left 8x8)
-            double[][] reducedDCT = reduceDCT(dctVals, 8);
+            // Step 4: Reduce DCT
+            double[][] reducedDCT = reduceDCT(dctVals, dctSize);
 
             // Step 5: Compute average value
             double avg = computeAverage(reducedDCT);
@@ -89,7 +91,7 @@ public class PerceptualHashService {
         }
 
         int distance = calculateHammingDistance(hash1, hash2);
-        boolean similar = distance <= SIMILARITY_THRESHOLD;
+        boolean similar = distance <= similarityThreshold;
 
         if (similar) {
             logger.debug("Images are perceptually similar (Hamming distance: {})", distance);

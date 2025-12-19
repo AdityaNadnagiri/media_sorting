@@ -1,8 +1,8 @@
 package com.media.sort.batch.writer;
 
 import com.media.sort.batch.dto.FileMoveDTO;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemWriter;
 
@@ -16,11 +16,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Handles bidirectional moves: original to main folder, duplicate to Duplicates
  * subfolder.
  */
+@Slf4j
 public class FileMoveWriter implements ItemWriter<FileMoveDTO> {
 
-    private static final Logger logger = LoggerFactory.getLogger(FileMoveWriter.class);
-
+    @Getter
     private final AtomicInteger movedCount = new AtomicInteger(0);
+
+    @Getter
     private final AtomicInteger replacedCount = new AtomicInteger(0);
 
     @Override
@@ -56,19 +58,19 @@ public class FileMoveWriter implements ItemWriter<FileMoveDTO> {
                     int dotIndex = fileName.lastIndexOf('.');
                     String baseName = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
                     String extension = dotIndex > 0 ? fileName.substring(dotIndex) : "";
-                    duplicatePath = duplicatesFolder.resolve(baseName + "_" + counter + extension);
+                    duplicatePath = duplicatesFolder.resolve("%s_%d%s".formatted(baseName, counter, extension));
                     counter++;
                 }
 
                 // Move reference to duplicates
                 Files.move(referencePath, duplicatePath, StandardCopyOption.REPLACE_EXISTING);
-                logger.info("Moved lower quality file to duplicates: {} -> {}",
-                        referencePath.toString(), duplicatePath);
+                log.info("Moved lower quality file to duplicates: {} -> {}",
+                        referencePath, duplicatePath);
 
                 // Move source to replace reference location
                 Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                logger.info("Moved higher quality file to main folder: {} -> {}",
-                        sourcePath.toString(), targetPath);
+                log.info("Moved higher quality file to main folder: {} -> {}",
+                        sourcePath, targetPath);
 
                 replacedCount.incrementAndGet();
                 movedCount.incrementAndGet();
@@ -76,21 +78,12 @@ public class FileMoveWriter implements ItemWriter<FileMoveDTO> {
             } else {
                 // Reference is higher quality - move source to duplicates
                 Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-
+                log.info("Moved duplicate to folder: {} -> {}", sourcePath, targetPath);
                 movedCount.incrementAndGet();
             }
 
         } catch (Exception e) {
-            logger.error("Error moving file: {} to {}",
-                    dto.getSourcePath(), dto.getTargetPath(), e);
+            log.error("Error moving file: {} to {}", dto.getSourcePath(), dto.getTargetPath(), e);
         }
-    }
-
-    public int getMovedCount() {
-        return movedCount.get();
-    }
-
-    public int getReplacedCount() {
-        return replacedCount.get();
     }
 }
