@@ -11,11 +11,9 @@ import com.media.sort.batch.writer.HashMapPopulatorWriter;
 import com.media.sort.batch.writer.MediaFileWriter;
 import com.media.sort.model.ExifData;
 
+import com.media.sort.service.ExifDataFactory;
 import com.media.sort.service.MediaFileService;
 import com.media.sort.service.PerceptualHashService;
-import com.media.sort.service.ProgressTrackerFactory;
-import com.media.sort.service.VideoExifDataService;
-import com.media.sort.service.VideoQualityComparator;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
@@ -45,10 +43,6 @@ public class MediaOrganizationJobConfig {
 
     @Autowired
     private MediaFileService mediaFileService;
-
-    @Autowired
-    @SuppressWarnings("unused") // Used in mediaFileProcessor bean method
-    private ProgressTrackerFactory progressTrackerFactory;
 
     /**
      * Shared hash map for duplicate detection across the job
@@ -118,12 +112,9 @@ public class MediaOrganizationJobConfig {
      */
     @Bean
     @StepScope
-    public MediaFileProcessor mediaFileProcessor(VideoExifDataService videoExifDataService,
-            VideoQualityComparator videoQualityComparator,
-            ProgressTrackerFactory progressTrackerFactory,
+    public MediaFileProcessor mediaFileProcessor(ExifDataFactory exifDataFactory,
             PerceptualHashService perceptualHashService) {
-        return new MediaFileProcessor(mediaFileService, progressTrackerFactory,
-                videoExifDataService, videoQualityComparator, perceptualHashService);
+        return new MediaFileProcessor(mediaFileService, exifDataFactory, perceptualHashService);
     }
 
     /**
@@ -176,8 +167,9 @@ public class MediaOrganizationJobConfig {
      */
     @Bean
     @StepScope
-    public FileHashProcessor fileHashProcessor(PerceptualHashService perceptualHashService) {
-        return new FileHashProcessor(mediaFileService, progressTrackerFactory, perceptualHashService);
+    public FileHashProcessor fileHashProcessor(ExifDataFactory exifDataFactory,
+            PerceptualHashService perceptualHashService) {
+        return new FileHashProcessor(mediaFileService, exifDataFactory, perceptualHashService);
     }
 
     /**

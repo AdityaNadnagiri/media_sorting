@@ -28,9 +28,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
-public class VideoExifDataService {
+public class VideoMetadataService {
 
-    private static final Logger logger = LoggerFactory.getLogger(VideoExifDataService.class);
+    private static final Logger logger = LoggerFactory.getLogger(VideoMetadataService.class);
 
     private ProgressTracker videoErrorTracker;
     private ProgressTracker mp4ErrorTracker;
@@ -48,7 +48,7 @@ public class VideoExifDataService {
     @Autowired
     private ProgressTrackerFactory progressTrackerFactory;
 
-    public VideoExifDataService() {
+    public VideoMetadataService() {
         // Trackers will be initialized through initializeTrackers method
     }
 
@@ -76,7 +76,12 @@ public class VideoExifDataService {
         exifData.setDateCreated(new Date(attr.creationTime().toMillis()));
         exifData.setDateModified(new Date(attr.lastModifiedTime().toMillis()));
 
+        logger.debug("Processing video file: {} ({})", file.getName(), extension);
+        logger.debug("  Initial dates - Created: {}, Modified: {}",
+                exifData.getDateCreated(), exifData.getDateModified());
+
         try {
+            // Try format-specific metadata extraction
             if ("mov".equals(extension)) {
                 extractQuickTimeMetadata(exifData);
             }
@@ -91,10 +96,30 @@ public class VideoExifDataService {
                 extractOtherVideoMetadata(exifData);
             }
 
-            if (exifData.getDateTaken() == null) {
-                logger.warn("No creation date found for video file: {}", file.getAbsolutePath());
+            // Log extracted date
+            if (exifData.getDateTaken() != null) {
+                logger.info(" Extracted DateTaken for {}: {}", file.getName(), exifData.getDateTaken());
+            } else {
+                logger.warn(" No DateTaken found for video: {} - will use filesystem dates",
+                        file.getName());
                 videoErrorTracker.saveProgress("No Date processVideoFile file: " + file);
+
+                // IMPORTANT: Even though we have filesystem dates (dateCreated, dateModified),
+                // log this as a warning so we know metadata extraction failed
+                // The getEarliestDate() will use dateCreated/dateModified as fallback
             }
+
+            // Log final date situation
+            Date earliestDate = exifData.getEarliestDate();
+            if (earliestDate != null) {
+                logger.debug("  Final earliest date for {}: {} (source: {})",
+                        file.getName(),
+                        earliestDate,
+                        earliestDate.equals(exifData.getDateTaken()) ? "metadata" : "filesystem");
+            } else {
+                logger.error("  CRITICAL: No date available for video: {}", file.getName());
+            }
+
         } catch (RuntimeException e) {
             logger.error("Unexpected error processing video file: {}", file.getAbsolutePath(), e);
         }
@@ -135,13 +160,30 @@ public class VideoExifDataService {
 
             if (directory != null) {
                 exifData.setDateTaken(directory.getDate(QuickTimeDirectory.TAG_CREATION_TIME));
+
+                // Extract device information (Make and Model)
+                for (Tag tag : directory.getTags()) {
+                    String tagName = tag.getTagName();
+                    if ("Make".equalsIgnoreCase(tagName) && exifData.getDeviceName() == null) {
+                        String make = tag.getDescription();
+                        if (make != null && !make.trim().isEmpty()) {
+                            exifData.setDeviceName(make.trim());
+                        }
+                    } else if ("Model".equalsIgnoreCase(tagName) && exifData.getDeviceModel() == null) {
+                        String model = tag.getDescription();
+                        if (model != null && !model.trim().isEmpty()) {
+                            exifData.setDeviceModel(model.trim());
+                        }
+                    }
+                }
             }
 
             if (exifData.getDateTaken() == null) {
                 qtErrorTracker.saveProgress("No Date extractQuickTimeMetadata file: " + file);
             }
         } catch (ImageProcessingException e) {
-            logger.error("Failed to extract QuickTime metadata for file: {}", file.getAbsolutePath(), e);
+            // Expected for many MOV files - fallback methods will be used
+            logger.debug("QuickTime metadata not available for: {} (will try fallback methods)", file.getName());
             qtErrorTracker.saveProgress("extractQuickTimeMetadata file: " + file);
         }
     }
@@ -154,12 +196,22 @@ public class VideoExifDataService {
             for (Directory directory : drewMetadata.getDirectories()) {
                 if ("MP4".equals(directory.getName())) {
                     for (Tag tag : directory.getTags()) {
-                        if ("Creation Time".equals(tag.getTagName())) {
+                        String tagName = tag.getTagName();
+                        if ("Creation Time".equals(tagName)) {
                             DateTimeFormatter formatter = DateTimeFormatter
                                     .ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ENGLISH);
                             ZonedDateTime dateTime = ZonedDateTime.parse(tag.getDescription(), formatter);
                             exifData.setDateTaken(Date.from(dateTime.toInstant()));
-                            break;
+                        } else if ("Make".equalsIgnoreCase(tagName) && exifData.getDeviceName() == null) {
+                            String make = tag.getDescription();
+                            if (make != null && !make.trim().isEmpty()) {
+                                exifData.setDeviceName(make.trim());
+                            }
+                        } else if ("Model".equalsIgnoreCase(tagName) && exifData.getDeviceModel() == null) {
+                            String model = tag.getDescription();
+                            if (model != null && !model.trim().isEmpty()) {
+                                exifData.setDeviceModel(model.trim());
+                            }
                         }
                     }
                 }
@@ -168,11 +220,42 @@ public class VideoExifDataService {
                 }
             }
 
+            // Also try extracting from Tika metadata as fallback
+            if (exifData.getDeviceName() == null || exifData.getDeviceModel() == null) {
+                try {
+                    BodyContentHandler handler = new BodyContentHandler();
+                    org.apache.tika.metadata.Metadata tikaMetadata = new org.apache.tika.metadata.Metadata();
+                    AutoDetectParser parser = new AutoDetectParser();
+                    ParseContext parseContext = new ParseContext();
+
+                    try (InputStream tikaInput = new FileInputStream(file)) {
+                        parser.parse(tikaInput, handler, tikaMetadata, parseContext);
+
+                        if (exifData.getDeviceName() == null) {
+                            String make = tikaMetadata.get("Make");
+                            if (make != null && !make.trim().isEmpty()) {
+                                exifData.setDeviceName(make.trim());
+                            }
+                        }
+
+                        if (exifData.getDeviceModel() == null) {
+                            String model = tikaMetadata.get("Model");
+                            if (model != null && !model.trim().isEmpty()) {
+                                exifData.setDeviceModel(model.trim());
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.debug("Could not extract device info from Tika for: {}", file.getName());
+                }
+            }
+
             if (exifData.getDateTaken() == null) {
                 mp4ErrorTracker.saveProgress("No Date extractMp4Metadata file: " + file);
             }
         } catch (IOException | ImageProcessingException e) {
-            logger.error("Failed to extract MP4 metadata for file: {}", file.getAbsolutePath(), e);
+            // Expected for many video files - fallback methods will be used
+            logger.debug("MP4 metadata not available for: {} (will try fallback methods)", file.getName());
             mp4ErrorTracker.saveProgress("extractMp4Metadata file: " + file);
         }
     }

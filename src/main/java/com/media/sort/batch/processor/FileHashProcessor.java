@@ -2,9 +2,9 @@ package com.media.sort.batch.processor;
 
 import com.media.sort.batch.dto.FileHashDTO;
 import com.media.sort.model.ExifData;
+import com.media.sort.service.ExifDataFactory;
 import com.media.sort.service.MediaFileService;
 import com.media.sort.service.PerceptualHashService;
-import com.media.sort.service.ProgressTrackerFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.item.ItemProcessor;
@@ -21,7 +21,7 @@ import java.io.File;
 public class FileHashProcessor implements ItemProcessor<File, FileHashDTO> {
 
     private final MediaFileService mediaFileService;
-    private final ProgressTrackerFactory progressTrackerFactory;
+    private final ExifDataFactory exifDataFactory;
     private final PerceptualHashService perceptualHashService;
 
     @Override
@@ -35,19 +35,7 @@ public class FileHashProcessor implements ItemProcessor<File, FileHashDTO> {
 
             // Try to create ExifData - it will determine if it's a media file
             try {
-                exifData = new ExifData(file);
-
-                // Set dependencies
-                exifData.setVideoExifDataService(null); // Video service not needed for hash comparison
-                exifData.setVideoQualityComparator(null); // Quality comparator not needed for hash comparison
-
-                // Initialize progress trackers
-                if (progressTrackerFactory != null) {
-                    exifData.setProgressTrackers(
-                            progressTrackerFactory.getImageErrorTracker(),
-                            progressTrackerFactory.getFileComparisonTracker(),
-                            progressTrackerFactory.getFileComparisonTracker());
-                }
+                exifData = exifDataFactory.createExifData(file);
 
                 // If it's not a media file, set exifData to null
                 if (exifData.isOther()) {

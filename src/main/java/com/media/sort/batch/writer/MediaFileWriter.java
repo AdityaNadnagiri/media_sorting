@@ -496,13 +496,29 @@ public class MediaFileWriter implements ItemWriter<MediaFileDTO> {
             // Extract the suffix (part after the base)
             String suffix = baseCandidate.substring(baseOriginal.length()).toLowerCase();
 
-            // Common copy patterns
-            // " - low", " - copy", " (1)", "_1", " copy 2"
-            return suffix.contains(" - low") ||
-                    suffix.contains(" copy") ||
-                    suffix.matches(".*\\(\\d+\\)$") || // (1)
-                    suffix.matches(".*_\\d+$") || // _1
-                    suffix.contains(" low"); // catch " low" generic
+            // CRITICAL FIX: The suffix must START with a delimiter character to be a valid
+            // copy pattern
+            // This prevents "1.jpg" from matching "100_9517.jpg" where suffix would be
+            // "00_9517"
+            // Valid delimiters: space, hyphen, underscore, opening parenthesis
+            if (suffix.isEmpty()) {
+                return false; // No suffix means identical names (already handled above)
+            }
+
+            char firstChar = suffix.charAt(0);
+            if (firstChar != ' ' && firstChar != '-' && firstChar != '_' && firstChar != '(') {
+                return false; // Suffix doesn't start with a valid delimiter
+            }
+
+            // Now check for common copy patterns in the suffix
+            // " - low", " - copy", " (1)", " _1", " copy", " low"
+            return suffix.startsWith(" - low") ||
+                    suffix.startsWith(" - copy") ||
+                    suffix.startsWith(" copy") ||
+                    suffix.startsWith(" low") ||
+                    suffix.matches("^\\s*\\(\\d+\\)$") || // (1), (2), etc.
+                    suffix.matches("^_\\d+$") || // _1, _2, etc.
+                    suffix.matches("^-\\d+$"); // -1, -2, etc.
 
         } catch (Exception e) {
             return false;

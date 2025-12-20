@@ -75,9 +75,9 @@ public class ReportingService {
 
         logger.info("");
         logger.info("FILES PROCESSED:");
-        logger.info("  ✓ Total: {}", currentReport.getTotalFilesProcessed());
-        logger.info("  ✓ Successfully organized: {}", currentReport.getSuccessfullyOrganized());
-        logger.info("  ✗ Errors: {}", currentReport.getErrorsOccurred());
+        logger.info("   Total: {}", currentReport.getTotalFilesProcessed());
+        logger.info("   Successfully organized: {}", currentReport.getSuccessfullyOrganized());
+        logger.info("   Errors: {}", currentReport.getErrorsOccurred());
 
         logger.info("");
         logger.info("DATE SOURCE BREAKDOWN:");

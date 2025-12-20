@@ -4,17 +4,45 @@
 
 ### **Option 1: Using Maven (Recommended for Development)**
 
+> ⚠️ **IMPORTANT for PowerShell Users:**  
+> PowerShell requires quotes around the entire `-D` parameter. Use this syntax:
+> ```powershell
+> mvn spring-boot:run "-Dspring-boot.run.arguments=--job=organize"
+> ```
+> Notice the quotes surround `-Dspring-boot...` not just the value.
+
 #### Basic Organize Job:
+
+**PowerShell (Windows):**
+```powershell
+mvn spring-boot:run "-Dspring-boot.run.arguments=--job=organize"
+```
+
+**CMD or Bash:**
 ```bash
 mvn spring-boot:run -Dspring-boot.run.arguments="--job=organize"
 ```
 
 #### With Custom Source Folder:
+
+**PowerShell (Windows):**
+```powershell
+mvn spring-boot:run "-Dspring-boot.run.arguments=--job=organize --app.media-sorting.source-folder=D:\YourPhotos"
+```
+
+**CMD or Bash:**
 ```bash
 mvn spring-boot:run -Dspring-boot.run.arguments="--job=organize --app.media-sorting.source-folder=D:\YourPhotos"
 ```
 
 #### With Multiple Parameters:
+
+**PowerShell (Windows):**
+```powershell
+mvn spring-boot:run "-Dspring-boot.run.arguments=--job=organize --app.media-sorting.source-folder=D:\YourPhotos --app.media-sorting.enable-device-folder-creation=false"
+```
+
+**CMD or Bash:**
 ```bash
 mvn spring-boot:run -Dspring-boot.run.arguments="--job=organize --app.media-sorting.source-folder=D:\YourPhotos --app.media-sorting.enable-device-folder-creation=false"
 ```
@@ -76,7 +104,22 @@ java -jar target\media-sorting-1.0.0-SNAPSHOT.jar --job=organize
 ## 📝 **Complete Examples**
 
 ### Example 1: Organize Photos from Specific Folder
-```bash
+
+**PowerShell (Windows):**
+```powershell
+# Using Maven
+mvn spring-boot:run "-Dspring-boot.run.arguments=--job=organize --app.media-sorting.source-folder=D:\NewPhotos"
+
+# Using JAR
+java -jar target\media-sorting-1.0.0-SNAPSHOT.jar --job=organize --app.media-sorting.source-folder="D:\NewPhotos"
+
+# Using Environment Variable (Recommended)
+$env:MEDIA_SOURCE_FOLDER="D:\NewPhotos"
+java -jar target\media-sorting-1.0.0-SNAPSHOT.jar --job=organize
+```
+
+**CMD (Windows):**
+```cmd
 # Using Maven
 mvn spring-boot:run -Dspring-boot.run.arguments="--job=organize --app.media-sorting.source-folder=D:\NewPhotos"
 
@@ -89,7 +132,18 @@ java -jar target\media-sorting-1.0.0-SNAPSHOT.jar --job=organize
 ```
 
 ### Example 2: Compare Two Folders
-```bash
+
+**PowerShell (Windows):**
+```powershell
+# Using Maven
+mvn spring-boot:run "-Dspring-boot.run.arguments=--job=compare --folder1.path=D:\Folder1 --folder2.path=D:\Folder2"
+
+# Using JAR
+java -jar target\media-sorting-1.0.0-SNAPSHOT.jar --job=compare --folder1.path="D:\Folder1" --folder2.path="D:\Folder2"
+```
+
+**CMD (Windows):**
+```cmd
 # Using Maven
 mvn spring-boot:run -Dspring-boot.run.arguments="--job=compare --folder1.path=D:\Folder1 --folder2.path=D:\Folder2"
 

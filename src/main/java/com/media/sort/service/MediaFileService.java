@@ -29,6 +29,9 @@ public class MediaFileService {
     private ProgressTrackerFactory progressTrackerFactory;
 
     @Autowired
+    private ExifDataFactory exifDataFactory;
+
+    @Autowired
     private FileQualityComparator fileQualityComparator;
 
     public MediaFileService() {
@@ -123,7 +126,7 @@ public class MediaFileService {
         String extension = fileData.getExtension();
 
         // Build hierarchy: Date → Device (optional) → Extension (required)
-        // Add device folder if available
+        // Skip folder levels when metadata is not available
         if (deviceModel != null && !deviceModel.trim().isEmpty()) {
             destinationFolder = new File(destinationFolder.getPath(), deviceModel);
         }
@@ -157,87 +160,99 @@ public class MediaFileService {
 
                     // If clean name already exists, we need to resolve the conflict
                     if (cleanName && Files.exists(destinationPath)) {
-                        logger.info("Conflict detected: {} already exists in Original folder", cleanFileName);
+                        logger.info("Filename conflict: {} already exists in Original folder", cleanFileName);
 
-                        // Load the existing file's metadata to compare quality
+                        // CRITICAL: Check if files are actually the same by comparing hashes
+                        // Different files with same name should just get renamed, not treated as
+                        // duplicates
                         File existingFile = destinationPath.toFile();
-                        ExifData existingFileData = new ExifData(existingFile);
 
-                        // Initialize EXIF data dependencies to ensure proper metadata extraction
-                        if (progressTrackerFactory != null) {
-                            existingFileData.setProgressTrackers(
-                                    progressTrackerFactory.getImageErrorTracker(),
-                                    progressTrackerFactory.getFileComparisonTracker(),
-                                    progressTrackerFactory.getFileComparisonTracker());
-                        }
+                        try {
+                            String currentHash = calculateHash(currentFile.toPath());
+                            String existingHash = calculateHash(existingFile.toPath());
 
-                        // Extract image dimensions directly from the file (EXIF may not contain
-                        // resolution)
-                        if (existingFileData.isImage()) {
-                            try {
-                                java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(existingFile);
-                                if (img != null) {
-                                    existingFileData.setImageWidth(img.getWidth());
-                                    existingFileData.setImageHeight(img.getHeight());
+                            if (!currentHash.equals(existingHash)) {
+                                // DIFFERENT FILES with same name - just add number suffix
+                                logger.info("Files have different hashes - these are DIFFERENT files, not duplicates");
+                                logger.info("  Current hash:  {}", currentHash.substring(0, 16) + "...");
+                                logger.info("  Existing hash: {}", existingHash.substring(0, 16) + "...");
+                                logger.info("Adding number suffix to create unique filename");
+
+                                // Find unique filename with number suffix
+                                destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
+                            } else {
+                                // SAME FILE (identical hash) - this is a TRUE duplicate
+                                logger.info("Files have SAME hash - TRUE duplicate detected");
+                                logger.info("  Hash: {}", currentHash.substring(0, 16) + "...");
+
+                                // Load existing file's metadata to compare quality
+                                ExifData existingFileData = exifDataFactory.createExifData(existingFile);
+
+                                // Extract image dimensions directly from the file (EXIF may not contain
+                                // resolution)
+                                if (existingFileData.isImage()) {
+                                    try {
+                                        java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(existingFile);
+                                        if (img != null) {
+                                            existingFileData.setImageWidth(img.getWidth());
+                                            existingFileData.setImageHeight(img.getHeight());
+                                        }
+                                    } catch (Exception e) {
+                                        logger.warn("Failed to extract dimensions for existing file: {}",
+                                                existingFile.getName(), e);
+                                    }
                                 }
-                            } catch (Exception e) {
-                                logger.warn("Failed to extract dimensions for existing file: {}",
-                                        existingFile.getName(), e);
+
+                                // Log file comparison details
+                                logger.info("Comparing duplicate files to determine which to keep:");
+                                logger.info("  Current:  {} - Size: {} bytes, Resolution: {}x{}, Date: {}",
+                                        currentFile.getName(),
+                                        currentFile.length(),
+                                        fileData.getWidth() != null ? fileData.getWidth() : "N/A",
+                                        fileData.getHeight() != null ? fileData.getHeight() : "N/A",
+                                        fileData.getDateTaken());
+                                logger.info("  Existing: {} - Size: {} bytes, Resolution: {}x{}, Date: {}",
+                                        existingFile.getName(),
+                                        existingFile.length(),
+                                        existingFileData.getWidth() != null ? existingFileData.getWidth() : "N/A",
+                                        existingFileData.getHeight() != null ? existingFileData.getHeight() : "N/A",
+                                        existingFileData.getDateTaken());
+
+                                // Use FileQualityComparator to determine which is higher quality
+                                boolean currentIsHigherQuality = fileQualityComparator.isFile1HigherQuality(
+                                        currentFile, existingFile, fileData, existingFileData);
+
+                                if (!currentIsHigherQuality) {
+                                    // Existing file is higher quality - keep it as original
+                                    logger.info("Decision: Existing file {} is higher quality, keeping as Original",
+                                            existingFile.getName());
+                                    logger.info("Moving current file {} to Duplicates", currentFile.getName());
+
+                                    // Move current file to Duplicates
+                                    File duplicateFolder = determineDuplicateFolder(fileData, destinationFolder);
+                                    createDirectory(duplicateFolder);
+                                    destinationPath = duplicateFolder.toPath().resolve(cleanFileName);
+                                    destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
+                                } else {
+                                    // Current file is higher quality - it's the true original
+                                    logger.info("Decision: Current file {} is higher quality (true original)",
+                                            currentFile.getName());
+                                    logger.info("Moving existing file {} to Duplicates", existingFile.getName());
+
+                                    // Move existing file to Duplicates
+                                    File duplicateFolder = determineDuplicateFolder(fileData, destinationFolder);
+                                    createDirectory(duplicateFolder);
+                                    Path duplicatePath = duplicateFolder.toPath().resolve(cleanFileName);
+                                    duplicatePath = FileOperationUtils.findUniqueFileName(duplicatePath);
+                                    Files.move(existingFile.toPath(), duplicatePath);
+                                    logger.info("Moved existing file to Duplicates: {}", duplicatePath);
+                                }
                             }
-                        }
-
-                        // Log file comparison details
-                        logger.info("Comparing files to determine original:");
-                        logger.info("  Current:  {} - Size: {} bytes, Resolution: {}x{}, Date: {}",
-                                currentFile.getName(),
-                                currentFile.length(),
-                                fileData.getWidth() != null ? fileData.getWidth() : "N/A",
-                                fileData.getHeight() != null ? fileData.getHeight() : "N/A",
-                                fileData.getDateTaken());
-                        logger.info("  Existing: {} - Size: {} bytes, Resolution: {}x{}, Date: {}",
-                                existingFile.getName(),
-                                existingFile.length(),
-                                existingFileData.getWidth() != null ? existingFileData.getWidth() : "N/A",
-                                existingFileData.getHeight() != null ? existingFileData.getHeight() : "N/A",
-                                existingFileData.getDateTaken());
-
-                        // Use FileQualityComparator to determine which is higher quality
-                        // This applies all priority rules including the new special rule:
-                        // "Both higher resolution AND larger file size overrides date rules"
-                        boolean currentIsHigherQuality = fileQualityComparator.isFile1HigherQuality(
-                                currentFile, existingFile, fileData, existingFileData);
-
-                        if (!currentIsHigherQuality) {
-                            // Existing file is higher quality - keep it as original
-                            // Current file should go to duplicates
-                            logger.info("Decision: Existing file {} is higher quality, keeping as Original",
-                                    existingFile.getName());
-                            logger.info("Moving current file {} to Duplicates", currentFile.getName());
-
-                            // Move current file to Duplicates
-                            File duplicateFolder = determineDuplicateFolder(fileData, destinationFolder);
-                            createDirectory(duplicateFolder); // Ensure directory exists
-                            destinationPath = duplicateFolder.toPath().resolve(cleanFileName);
+                        } catch (Exception e) {
+                            // If hash calculation fails, fall back to adding number suffix
+                            logger.warn("Failed to calculate hashes for conflict resolution, adding number suffix: {}",
+                                    e.getMessage());
                             destinationPath = FileOperationUtils.findUniqueFileName(destinationPath);
-                        } else {
-                            // Current file is higher quality - it's the true original
-                            // Move existing file to Duplicates first
-                            logger.info("Decision: Current file {} is higher quality (true original)",
-                                    currentFile.getName());
-                            logger.info("Moving existing file {} to Duplicates", existingFile.getName());
-
-                            // Determine duplicate folder path
-                            File duplicateFolder = determineDuplicateFolder(fileData, destinationFolder);
-                            createDirectory(duplicateFolder); // Ensure directory exists
-                            Path duplicatePath = duplicateFolder.toPath().resolve(cleanFileName);
-                            duplicatePath = FileOperationUtils.findUniqueFileName(duplicatePath);
-
-                            // Move existing file to duplicates
-                            Files.move(existingFile.toPath(), duplicatePath);
-                            logger.info("Moved existing file to Duplicates: {}", duplicatePath);
-
-                            // Now current file can take the clean name in Original
-                            // destinationPath is already set to the clean name
                         }
                     }
                 }

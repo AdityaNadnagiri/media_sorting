@@ -40,6 +40,9 @@ public class PhotoOrganizerService {
     private ProgressTrackerFactory progressTrackerFactory;
 
     @Autowired
+    private ExifDataFactory exifDataFactory;
+
+    @Autowired
     private FileQualityComparator fileQualityComparator;
 
     private File emptyFolderDirectory;
@@ -99,14 +102,7 @@ public class PhotoOrganizerService {
 
         for (File file : files) {
             if (file.isFile()) {
-                ExifData fileData = new ExifData(file);
-                // Initialize progress trackers from factory to avoid hardcoded paths
-                if (progressTrackerFactory != null) {
-                    fileData.setProgressTrackers(
-                            progressTrackerFactory.getImageErrorTracker(),
-                            progressTrackerFactory.getFileComparisonTracker(),
-                            progressTrackerFactory.getFileComparisonTracker());
-                }
+                ExifData fileData = exifDataFactory.createExifData(file);
                 if (!fileData.isOther()) {
                     mediaFileService.processFile(fileData, this);
                 } else {
@@ -247,14 +243,7 @@ public class PhotoOrganizerService {
         for (File file : files) {
             if (file.isFile()) {
                 try {
-                    ExifData fileData = new ExifData(file);
-                    // Initialize progress trackers from factory to avoid hardcoded paths
-                    if (progressTrackerFactory != null) {
-                        fileData.setProgressTrackers(
-                                progressTrackerFactory.getImageErrorTracker(),
-                                progressTrackerFactory.getFileComparisonTracker(),
-                                progressTrackerFactory.getFileComparisonTracker());
-                    }
+                    ExifData fileData = exifDataFactory.createExifData(file);
                     String key = mediaFileService.calculateHash(fileData.getFile().toPath());
                     if (fileHash.containsKey(key)) {
                         String originalName = fileHash.get(key).getFile().getName();

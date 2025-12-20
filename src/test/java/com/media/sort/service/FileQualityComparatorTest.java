@@ -138,14 +138,24 @@ class FileQualityComparatorTest {
                 File fileWithPattern = createTempFile("DSC00251(1).JPG", 1000000);
                 File fileWithoutPattern = createTempFile("DSC00251.JPG", 1000000);
 
-                ExifData exifWithPattern = mock(ExifData.class);
-                ExifData exifWithoutPattern = mock(ExifData.class);
+                // Create REAL ExifData objects instead of mocks
+                // The isBetterQualityThan method accesses fields directly, not through getters
+                ExifData exifWithPattern = new ExifData();
+                ExifData exifWithoutPattern = new ExifData();
 
-                // Same resolution
-                when(exifWithPattern.getWidth()).thenReturn(3024);
-                when(exifWithPattern.getHeight()).thenReturn(4032);
-                when(exifWithoutPattern.getWidth()).thenReturn(3024);
-                when(exifWithoutPattern.getHeight()).thenReturn(4032);
+                // Set file references
+                exifWithPattern.setFile(fileWithPattern);
+                exifWithoutPattern.setFile(fileWithoutPattern);
+
+                // Set same resolution
+                exifWithPattern.setImageWidth(3024);
+                exifWithPattern.setImageHeight(4032);
+                exifWithoutPattern.setImageWidth(3024);
+                exifWithoutPattern.setImageHeight(4032);
+
+                // Set same file size
+                exifWithPattern.setFileSize(1000000L);
+                exifWithoutPattern.setFileSize(1000000L);
 
                 // File with (1) has OLDER date - it's the original!
                 Date olderDate = Date.from(LocalDateTime.of(2009, 9, 24, 10, 15, 0)
@@ -153,19 +163,14 @@ class FileQualityComparatorTest {
                 Date newerDate = Date.from(LocalDateTime.of(2009, 9, 25, 14, 30, 0)
                                 .atZone(ZoneId.systemDefault()).toInstant());
 
-                when(exifWithPattern.getDateTaken()).thenReturn(olderDate);
-                when(exifWithPattern.getDateCreated()).thenReturn(olderDate);
-                when(exifWithPattern.getEarliestDate()).thenReturn(olderDate);
-                when(exifWithPattern.getFile()).thenReturn(fileWithPattern);
-                when(exifWithPattern.getFileSize()).thenReturn(1000000L);
-                when(exifWithPattern.getQualityScore()).thenReturn(3024 * 4032);
+                // Set dates directly on fields (not just mocking getters)
+                exifWithPattern.setDateTaken(olderDate);
+                exifWithPattern.setDateCreated(olderDate);
+                exifWithPattern.setDateModified(olderDate);
 
-                when(exifWithoutPattern.getDateTaken()).thenReturn(newerDate);
-                when(exifWithoutPattern.getDateCreated()).thenReturn(newerDate);
-                when(exifWithoutPattern.getEarliestDate()).thenReturn(newerDate);
-                when(exifWithoutPattern.getFile()).thenReturn(fileWithoutPattern);
-                when(exifWithoutPattern.getFileSize()).thenReturn(1000000L);
-                when(exifWithoutPattern.getQualityScore()).thenReturn(3024 * 4032);
+                exifWithoutPattern.setDateTaken(newerDate);
+                exifWithoutPattern.setDateCreated(newerDate);
+                exifWithoutPattern.setDateModified(newerDate);
 
                 // Test using ExifData.isBetterQualityThan directly since it now prioritizes
                 // dates

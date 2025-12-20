@@ -3,10 +3,10 @@ package com.media.sort.batch.processor;
 import com.media.sort.batch.dto.FileMoveDTO;
 import com.media.sort.batch.dto.FileHashDTO;
 import com.media.sort.model.ExifData;
+import com.media.sort.service.ExifDataFactory;
 import com.media.sort.service.FileQualityComparator;
 import com.media.sort.service.MediaFileService;
 import com.media.sort.service.PerceptualHashService;
-import com.media.sort.service.ProgressTrackerFactory;
 import com.media.sort.util.DuplicatePatternUtils;
 import com.media.sort.util.FileOperationUtils;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +30,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
 
     private final MediaFileService mediaFileService;
     private final FileQualityComparator qualityComparator;
-    private final ProgressTrackerFactory progressTrackerFactory;
+    private final ExifDataFactory exifDataFactory;
     private final ConcurrentHashMap<String, FileHashDTO> referenceHashMap;
     private final PerceptualHashService perceptualHashService;
 
@@ -169,18 +169,7 @@ public class DuplicateFileProcessor implements ItemProcessor<File, FileMoveDTO> 
      */
     private ExifData extractExifData(File file) {
         try {
-            ExifData exifData = new ExifData(file);
-
-            // Set dependencies
-            exifData.setVideoExifDataService(null); // Video service not needed for comparison
-            exifData.setVideoQualityComparator(null); // Uses FileQualityComparator instead
-
-            if (progressTrackerFactory != null) {
-                exifData.setProgressTrackers(
-                        progressTrackerFactory.getImageErrorTracker(),
-                        progressTrackerFactory.getFileComparisonTracker(),
-                        progressTrackerFactory.getFileComparisonTracker());
-            }
+            ExifData exifData = exifDataFactory.createExifData(file);
 
             // Return null if it's not a media file
             if (exifData.isOther()) {

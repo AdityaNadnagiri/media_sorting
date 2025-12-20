@@ -10,9 +10,9 @@ import com.media.sort.batch.writer.FileMoveWriter;
 import com.media.sort.batch.writer.HashMapWriter;
 import com.media.sort.service.FileQualityComparator;
 
+import com.media.sort.service.ExifDataFactory;
 import com.media.sort.service.MediaFileService;
 import com.media.sort.service.PerceptualHashService;
-import com.media.sort.service.ProgressTrackerFactory;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
@@ -54,7 +54,7 @@ public class FolderComparisonJobConfig {
     private FileQualityComparator qualityComparator;
 
     @Autowired
-    private ProgressTrackerFactory progressTrackerFactory;
+    private ExifDataFactory exifDataFactory;
 
     @Autowired
     private PerceptualHashService perceptualHashService;
@@ -144,7 +144,7 @@ public class FolderComparisonJobConfig {
     @Bean
     @StepScope
     public FileHashProcessor fileHashProcessor() {
-        return new FileHashProcessor(mediaFileService, progressTrackerFactory, perceptualHashService);
+        return new FileHashProcessor(mediaFileService, exifDataFactory, perceptualHashService);
     }
 
     /**
@@ -167,7 +167,7 @@ public class FolderComparisonJobConfig {
         return new DuplicateFileProcessor(
                 mediaFileService,
                 qualityComparator,
-                progressTrackerFactory,
+                exifDataFactory,
                 folderComparisonHashMap,
                 perceptualHashService);
     }

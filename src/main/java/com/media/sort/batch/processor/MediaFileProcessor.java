@@ -2,11 +2,9 @@ package com.media.sort.batch.processor;
 
 import com.media.sort.batch.dto.MediaFileDTO;
 import com.media.sort.model.ExifData;
+import com.media.sort.service.ExifDataFactory;
 import com.media.sort.service.MediaFileService;
 import com.media.sort.service.PerceptualHashService;
-import com.media.sort.service.ProgressTrackerFactory;
-import com.media.sort.service.VideoExifDataService;
-import com.media.sort.service.VideoQualityComparator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.item.ItemProcessor;
@@ -24,28 +22,14 @@ import java.io.File;
 public class MediaFileProcessor implements ItemProcessor<File, MediaFileDTO> {
 
     private final MediaFileService mediaFileService;
-    private final ProgressTrackerFactory progressTrackerFactory;
-    private final VideoExifDataService videoExifDataService;
-    private final VideoQualityComparator videoQualityComparator;
+    private final ExifDataFactory exifDataFactory;
     private final PerceptualHashService perceptualHashService;
 
     @Override
     public MediaFileDTO process(File file) throws Exception {
         try {
-            // Create ExifData object
-            ExifData exifData = new ExifData(file);
-
-            // Set dependencies
-            exifData.setVideoExifDataService(videoExifDataService);
-            exifData.setVideoQualityComparator(videoQualityComparator);
-
-            // Initialize progress trackers
-            if (progressTrackerFactory != null) {
-                exifData.setProgressTrackers(
-                        progressTrackerFactory.getImageErrorTracker(),
-                        progressTrackerFactory.getFileComparisonTracker(),
-                        progressTrackerFactory.getFileComparisonTracker());
-            }
+            // Create ExifData object using factory (handles all dependency injection)
+            ExifData exifData = exifDataFactory.createExifData(file);
 
             // Skip "other" files (non-media files)
             if (exifData.isOther()) {

@@ -9,8 +9,9 @@ import com.drew.metadata.Tag;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.exif.GpsDirectory;
 import com.media.sort.service.FileTypeRegistry;
+import com.media.sort.service.ImageMetadataService;
 import com.media.sort.service.ProgressTracker;
-import com.media.sort.service.VideoExifDataService;
+import com.media.sort.service.VideoMetadataService;
 import com.media.sort.service.VideoQualityComparator;
 import com.media.sort.util.DuplicatePatternUtils;
 import lombok.Data;
@@ -39,7 +40,8 @@ public class ExifData {
     private ProgressTracker fileTracker;
 
     // Dependencies passed via setter methods
-    private VideoExifDataService videoExifDataService;
+    private ImageMetadataService imageMetadataService;
+    private VideoMetadataService videoMetadataService;
     private VideoQualityComparator videoQualityComparator;
 
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
@@ -89,10 +91,17 @@ public class ExifData {
     }
 
     /**
-     * Set VideoExifDataService dependency
+     * Set ImageMetadataService dependency
      */
-    public void setVideoExifDataService(VideoExifDataService videoExifDataService) {
-        this.videoExifDataService = videoExifDataService;
+    public void setImageMetadataService(ImageMetadataService imageMetadataService) {
+        this.imageMetadataService = imageMetadataService;
+    }
+
+    /**
+     * Set VideoMetadataService dependency
+     */
+    public void setVideoMetadataService(VideoMetadataService videoMetadataService) {
+        this.videoMetadataService = videoMetadataService;
     }
 
     /**
@@ -108,10 +117,10 @@ public class ExifData {
             this.fileSize = file.length(); // Capture file size for quality comparison
             setImageExifDataType();
 
-            if (isImage()) {
-                processImageFile();
-            } else if (isVideo() && videoExifDataService != null) {
-                videoExifDataService.processVideoFile(this);
+            if (isImage() && imageMetadataService != null) {
+                imageMetadataService.processImageFile(this);
+            } else if (isVideo() && videoMetadataService != null) {
+                videoMetadataService.processVideoFile(this);
             }
 
             reorderDates();
